@@ -17,10 +17,11 @@ Lark Base "THE ORBIT — Product Launch & Restock":
   python3 tools/lark.py setup-base [--apply]        # tạo bảng/cột còn thiếu theo SCHEMA (mặc định chỉ in kế hoạch)
   python3 tools/lark.py export                      # ghi xuat/TINH_TRANG_HANG.md cho agent CSKH đọc
   python3 tools/lark.py hoi <tên sản phẩm>          # tra nhanh tình trạng/restock 1 mẫu (chỉ đọc)
+  python3 tools/lark.py nhac [--send]               # cảnh báo kho đến hạn (ngưỡng: knowledge/canh_bao.json)
 <bảng> = số đầu tên ("02", "05") hoặc một phần tên ("HÀNG ĐẶT LẠI"). Ngày ghi dạng 2026-11-04.
 """
-import json, os, sys, time, urllib.request, urllib.error, urllib.parse
-from datetime import datetime
+import json, os, re, sys, time, urllib.request, urllib.error, urllib.parse
+from datetime import date, datetime, timedelta
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 ENV = os.path.expanduser("~/.config/orbit-kho/lark.env")
@@ -309,6 +310,93 @@ def hoi(tk, app, kw):
     print("(hết)")
 
 
+# ---------- nhắc việc kho (chạy 9h sáng, không gọi Claude) ----------
+
+def to_date(v):
+    """'04/11/2026' (ô ngày) hoặc chữ người gõ '4/11', '2026-11-04' -> date."""
+    v = (v or "").strip()
+    for f in ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(v[:10], f).date()
+        except ValueError:
+            pass
+    m = re.match(r"(\d{1,2})[/-](\d{1,2})$", v)
+    if m:
+        d = date(date.today().year, int(m[2]), int(m[1]))
+        return d.replace(year=d.year - 1) if d > date.today() else d
+    return None
+
+
+def nhac(tk, app):
+    cb = json.load(open(os.path.join(ROOT, "knowledge", "canh_bao.json")))
+    on = lambda k: cb.get(k, {}).get("bat")
+    today = date.today()
+    ngay = lambda r, k: to_date(r.get(k))
+    out = {}
+    add = lambda nhom, s: out.setdefault(nhom, []).append("• " + s)
+
+    if on("dat_lai_chua_ve") or on("qua_hen_hang_ve"):
+        for r in rows_of(tk, app, "02"):
+            if not name_of(r) or r.get("Đã về đủ") or r.get("Trạng thái đặt") in ("Đã về đủ", "Huỷ"):
+                continue
+            dat, hen = ngay(r, "Ngày đặt"), ngay(r, "Hẹn hàng về")
+            ly_do = []
+            if on("dat_lai_chua_ve") and dat and (today - dat).days >= cb["dat_lai_chua_ve"]["so_ngay"]:
+                ly_do.append(f"đặt {(today - dat).days} ngày chưa về đủ")
+            if on("qua_hen_hang_ve") and hen and hen < today:
+                ly_do.append(f"quá hẹn về {(today - hen).days} ngày")
+            if ly_do:
+                ai = r.get("Người phụ trách") or "người phụ trách"
+                add("Hàng đặt lại chưa về", f"{name_of(r)} {r.get('Màu / Size', '')}: {', '.join(ly_do)} "
+                    f"(đã nhận {r.get('SL đã nhận') or 0}/{r.get('SL đặt') or '?'}, hẹn {r.get('Hẹn hàng về') or 'chưa có'}) "
+                    f"→ {ai} hỏi {r.get('Xưởng / NCC') or 'xưởng'}, báo kho ngày về mới")
+
+    if on("demo_chua_ve") or on("sx_qua_hen"):
+        for r in rows_of(tk, app, "01"):
+            b = r.get("Đang ở bước")
+            if not name_of(r):
+                continue
+            if on("demo_chua_ve") and b == "Đang làm demo":
+                gui, han = ngay(r, "Ngày gửi demo"), ngay(r, "Hạn demo")
+                if gui and (today - gui).days >= cb["demo_chua_ve"]["so_ngay"]:
+                    add("Demo / sản xuất chưa về", f"{name_of(r)}: demo gửi xưởng {(today - gui).days} ngày chưa về → hỏi {r.get('Xưởng / NCC') or 'xưởng'}")
+                elif han and han < today:
+                    add("Demo / sản xuất chưa về", f"{name_of(r)}: quá hạn demo {(today - han).days} ngày → hỏi {r.get('Xưởng / NCC') or 'xưởng'}")
+                elif not gui and not han:
+                    add("Thiếu dữ liệu", f"{name_of(r)}: đang làm demo nhưng chưa ghi 'Ngày gửi demo' → không nhắc được")
+            if on("sx_qua_hen") and b in ("Đang sản xuất", "Chờ hàng về") and not r.get("Ngày nhận kho thực tế"):
+                hen = ngay(r, "Hẹn hàng về")
+                if hen and hen < today:
+                    add("Demo / sản xuất chưa về", f"{name_of(r)}: sản xuất quá hẹn về {(today - hen).days} ngày (SL {r.get('SL đặt SX') or '?'}) → hỏi xưởng, báo CSKH lùi ngày")
+
+    if on("don_van_de_sap_het_han") or on("don_van_de_ton_dong") or on("chua_nhap_nhanh"):
+        for r in rows_of(tk, app, "06"):
+            if not name_of(r):
+                continue
+            mo = r.get("Trạng thái") != "Đóng"
+            han, ps = ngay(r, "Hạn xử lý trên sàn"), ngay(r, "Ngày phát sinh")
+            ten = f"{r.get('Sàn', '')} {name_of(r)} ({r.get('Loại', '')})"
+            if mo and on("don_van_de_sap_het_han") and han and (han - today).days * 24 <= cb["don_van_de_sap_het_han"]["so_gio"]:
+                add("⏰ Đơn sắp hết hạn trên sàn", f"{ten}: hạn {r.get('Hạn xử lý trên sàn')} → {r.get('Người xử lý') or 'người duyệt'} xử lý trên sàn")
+            elif mo and on("don_van_de_ton_dong") and ps and (today - ps).days >= cb["don_van_de_ton_dong"]["so_ngay"]:
+                add("Đơn vấn đề tồn đọng", f"{ten}: {(today - ps).days} ngày vẫn '{r.get('Trạng thái') or 'Mới'}'")
+            if on("chua_nhap_nhanh") and r.get("Kết quả kiểm hàng hoàn") == "Nguyên vẹn - nhập lại" and not r.get("Đã nhập lại Nhanh.vn"):
+                add("Chưa nhập Nhanh.vn", f"hàng hoàn {ten} nguyên vẹn nhưng chưa nhập lại tồn")
+    if on("chua_nhap_nhanh"):
+        for r in rows_of(tk, app, "03"):
+            nh = ngay(r, "Ngày nhận")
+            if name_of(r) and not r.get("Đã nhập Nhanh.vn") and nh and (today - nh).days >= cb["chua_nhap_nhanh"]["so_ngay"]:
+                add("Chưa nhập Nhanh.vn", f"{name_of(r)} {r.get('Size/màu', '')}: nhận {r.get('Ngày nhận')}, SL nhập {r.get('SL nhập kho') or '?'} chưa tick nhập Nhanh.vn")
+
+    if on("thieu_doi_soat"):
+        hom_qua = today - timedelta(days=1)
+        co = {r.get("Sàn") for r in rows_of(tk, app, "07") if ngay(r, "Ngày") == hom_qua}
+        thieu = [s for s in cb["thieu_doi_soat"]["san"] if s not in co]
+        if thieu:
+            add("Đối soát", f"chưa có đối soát {hom_qua:%d/%m} cho {', '.join(thieu)} → người kho nhắn số cần gửi/đã đóng/đã bàn giao")
+    return out
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
@@ -356,6 +444,13 @@ def main():
             export(tk, app)
         elif cmd == "hoi":
             hoi(tk, app, " ".join(a))
+        elif cmd == "nhac":
+            out = nhac(tk, app)
+            text = "\n\n".join(f"{k}:\n" + "\n".join(v) for k, v in out.items())
+            print(text or "(không có cảnh báo)")
+            if out and "--send" in a:
+                send(tk, env.get("CHAT_ID") or sys.exit("Thiếu CHAT_ID trong env"),
+                     f"⏰ Kho cần xử lý hôm nay ({date.today():%d/%m}):\n\n" + text)
         else:
             sys.exit(__doc__)
 

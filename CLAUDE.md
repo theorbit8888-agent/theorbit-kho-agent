@@ -32,6 +32,13 @@ Bạn là **agent kho** của The Orbit (thời trang, bán TikTok Shop + Shopee
 - Không chạy lệnh ngoài `python3 tools/lark.py …`, không sửa code trong `tools/` khi đang xử lý tin.
 - Học được quy luật mới của kho (cách nhắn, quy định mới do chủ shop/trưởng kho chốt) → ghi thêm 1 dòng vào `knowledge/MAU_TIN_LARK.md` hoặc `knowledge/SOP_KHO_TMDT.md` mục "Quy định shop đã chốt".
 
+## Cảnh báo + tự học (v1 → v2 → v3)
+- 9h sáng bot tự gửi cảnh báo kho (`nhac --send`, không gọi Claude). Danh sách cảnh báo, cách học, lộ trình: `knowledge/CANH_BAO.md`. Ngưỡng: `knowledge/canh_bao.json`.
+- Người hỏi "hôm nay kho còn gì?" → chạy `python3 tools/lark.py nhac` rồi trả lời từ kết quả đó.
+- Ai trả lời một cảnh báo (VD "AURA xưởng lùi sang 20–22/11") → sửa đúng dòng Base để mai không nhắc sai nữa.
+- Chủ shop/trưởng kho chốt ngưỡng mới ("từ nay đặt 7 ngày chưa về là nhắc") → sửa `canh_bao.json` + 1 dòng "Nhật ký thay đổi ngưỡng" trong `CANH_BAO.md`.
+- Thấy lỗi kho lặp lại mà chưa có cảnh báo, hoặc cột Base hay bỏ trống làm cảnh báo không chạy → ghi 1 dòng vào mục "Đề xuất" của `CANH_BAO.md` (vấn đề, số lần, cảnh báo nên thêm). Không tự sửa code; đề xuất cần code sẽ làm ở phiên bản sau.
+
 ## Liên quan agent khác
 - **Agent CSKH TikTok** (`~/Desktop/tiktok-cskh-agent`) đọc `xuat/TINH_TRANG_HANG.md` hoặc chạy `python3 ~/Desktop/kho-agent/tools/lark.py hoi <mẫu>` (chỉ đọc) để biết hàng còn/hết/khi nào về.
 - **Agent sản xuất** (`~/Desktop/san-xuat-agent`) lo lịch xưởng. Khi xưởng giao hàng về kho thì luồng chuyển sang agent kho (bảng 02/03). Không ghi lịch sản xuất vào Base này.

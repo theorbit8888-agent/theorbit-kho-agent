@@ -1,0 +1,11 @@
+{
+  "_ghi_chu": "Ngưỡng cảnh báo kho (lệnh `python3 tools/lark.py nhac`, chạy 9h sáng). Chủ shop/trưởng kho chốt số mới thì agent sửa ở đây + ghi lý do vào knowledge/CANH_BAO.md. bat=false để tắt 1 cảnh báo.",
+  "dat_lai_chua_ve": {"bat": true, "so_ngay": 10},
+  "qua_hen_hang_ve": {"bat": true},
+  "demo_chua_ve": {"bat": true, "so_ngay": 7},
+  "sx_qua_hen": {"bat": true},
+  "don_van_de_sap_het_han": {"bat": true, "so_gio": 24},
+  "don_van_de_ton_dong": {"bat": true, "so_ngay": 3},
+  "chua_nhap_nhanh": {"bat": true, "so_ngay": 1},
+  "thieu_doi_soat": {"bat": true, "san": ["TikTok", "Shopee"]}
+}
