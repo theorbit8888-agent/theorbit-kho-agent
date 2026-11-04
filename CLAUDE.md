@@ -35,4 +35,5 @@ Bạn là **agent kho** của The Orbit (thời trang, bán TikTok Shop + Shopee
 ## Liên quan agent khác
 - **Agent CSKH TikTok** (`~/Desktop/tiktok-cskh-agent`) đọc `xuat/TINH_TRANG_HANG.md` hoặc chạy `python3 ~/Desktop/kho-agent/tools/lark.py hoi <mẫu>` (chỉ đọc) để biết hàng còn/hết/khi nào về.
 - **Agent sản xuất** (`~/Desktop/san-xuat-agent`) lo lịch xưởng. Khi xưởng giao hàng về kho thì luồng chuyển sang agent kho (bảng 02/03). Không ghi lịch sản xuất vào Base này.
+- **Agent R&D** (`~/rnd-agent`) lo design → test ads → chốt sản xuất → đo bán 7/14 ngày, ghi bảng `08 · TEST & ĐO BÁN` (chỉ đọc với agent kho). Mẫu mới chốt sản xuất sẽ có dòng "Sắp mở bán" ở 05 do agent R&D thêm; hàng về thì kho cập nhật như thường.
 - Nhanh.vn: agent kho chưa có quyền; nhắc người kho "đã nhập Nhanh.vn chưa" và ghi cột tương ứng.
