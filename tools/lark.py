@@ -196,7 +196,9 @@ def row(rec):
 
 def coerce(tk, app, tid, data):
     """Đổi giá trị nhập (chữ) sang đúng kiểu cột."""
-    types = {f["field_name"]: f["type"] for f in fields(tk, app, tid)}
+    fs = fields(tk, app, tid)
+    types = {f["field_name"]: f["type"] for f in fs}
+    opts = {f["field_name"]: [o["name"] for o in (f.get("property") or {}).get("options", [])] for f in fs}
     out = {}
     for k, v in data.items():
         if k not in types:
@@ -210,6 +212,11 @@ def coerce(tk, app, tid, data):
             v = v.lower() in ("1", "true", "x", "có", "co", "yes")
         elif t == 1 and not isinstance(v, str):
             v = str(v)
+        elif t == 3 and opts[k] and v not in opts[k]:  # chọn 1: chỉ nhận lựa chọn có sẵn, khớp gần đúng
+            near = [o for o in opts[k] if o.lower().startswith(str(v).lower()) or str(v).lower() in o.lower()]
+            if len(near) != 1:
+                sys.exit(f"Cột '{k}' chỉ nhận: {', '.join(opts[k])}")
+            v = near[0]
         elif t == 11 and isinstance(v, str):  # cột người: cần open_id (ou_...), tên thì ghi vào cột chữ khác
             if not v.startswith("ou_"):
                 sys.exit(f"Cột '{k}' là kiểu người Lark, cần open_id ou_... (open_id người gửi có trong tin)")

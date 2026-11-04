@@ -19,6 +19,7 @@ Người kho nhắn tự nhiên, không cần đúng mẫu. Đây là các dạn
 - Tên sản phẩm: theo bảng 01 (VD "ORBIT TENEBRA", "ORBIT AURA"). Người nhắn "tenebra" → khớp "ORBIT TENEBRA".
 - Size/màu: dạng `Đen: M20 L30 XL10` (bảng 02 cột "Màu / Size", bảng 03/05 cột "Size/màu"). "Người phụ trách" ở 02 là cột người Lark: chỉ ghi được open_id (VD người gửi tin); tên khác thì ghi vào "Vướng mắc"/ghi chú. "SL còn thiếu", "Tình trạng" ở 02 là cột tự tính — không ghi.
 - Ngày: `YYYY-MM-DD` khi gọi `lark.py`.
+- Cột chọn (Kho nhận, Trạng thái, Loại, Sàn…) chỉ ghi đúng lựa chọn có sẵn; "kho tổng" = "Kho Tổng Q2", "cửa hàng/PN" = "Kho Cửa hàng PN". Tool tự khớp gần đúng, mơ hồ thì báo lỗi kèm danh sách.
 - Nguồn tin: `lark:<message_id> <tên/ngày>`.
 
 ## Quy luật học thêm (agent tự ghi khi gặp)
