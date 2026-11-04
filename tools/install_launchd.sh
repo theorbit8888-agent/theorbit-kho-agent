@@ -1,7 +1,7 @@
 #!/bin/bash
 # Cài listener bot kho chạy nền (launchd), tự bật lại khi máy khởi động hoặc listener chết.
 set -e
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DIR="$(cd "$(dirname "$0")/.." && pwd -P)"  # đường thật: launchd không được đọc ~/Desktop
 PLIST=~/Library/LaunchAgents/vn.theorbit.kho-agent.plist
 mkdir -p "$DIR/logs" ~/Library/LaunchAgents
 cat > "$PLIST" <<EOF
