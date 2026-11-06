@@ -1,7 +1,7 @@
-# Mã SKU đã biết (agent tự ghi thêm khi gặp)
-Dạng `LOẠI-BST-TÊN MẪU-[MÀU]-SIZE`. Sau này có quyền Nhanh.vn sẽ lấy danh sách SKU tự động.
+# Mã SKU kho hay ghi lệch (agent tự ghi thêm khi gặp)
+Bảng chuẩn: `knowledge/SKU_NHANH.md` (lấy từ Nhanh.vn). File này chỉ ghi các mã kho báo **khác** Nhanh, để lần sau khớp nhanh.
 
-| Tiền tố SKU | Tên ghi Base | Loại | Nguồn |
+| Kho ghi | Đúng trên Nhanh | Tên | Gặp ngày |
 |---|---|---|---|
-| JS-A2-MESH | ÁO MESH (JS-A2-MESH) | áo | kho báo 05/11/2026 ("áo mesh") |
-| SO-A0-EDGE-DEN | QUẦN EDGE ĐEN (SO-A0-EDGE-DEN) | quần | kho báo 05/11/2026 ("quần edge đen") |
+| JS-A2-MESH | JS-F2-MESH | Áo Mesh Jersey Nam Nữ 08 | 05/11/2026 |
+| SO-A0-EDGE-DEN | SO-A1-EDGE-DEN | QUẦN NỈ CHÂN CUA WASHED EDGE SHORT - Đen | 05/11/2026 |
