@@ -50,6 +50,24 @@ def on_message(data: P2ImMessageReceiveV1):
               "time": int(m.create_time) // 1000})
 
 
+def recent(j, hours=3, n=6):
+    """Các tin tag bot gần đây trong cùng nhóm + câu bot đã trả lời: tin rời nhau vẫn là một việc."""
+    def rows(name):
+        try:
+            return [json.loads(x) for x in open(os.path.join(LOG, name))]
+        except FileNotFoundError:
+            return []
+    said = {r["to"]: r["text"] for r in rows("replies.jsonl")}
+    prev = [r for r in rows("inbox.jsonl") if r.get("chat") == j["chat"] and r["id"] != j["id"]
+            and j["time"] - hours * 3600 <= r.get("time", 0) <= j["time"]][-n:]
+    out = []
+    for r in prev:
+        out.append(f"[{time.strftime('%H:%M %d/%m', time.localtime(r['time']))}] người kho: {r.get('text', '')}")
+        if r["id"] in said:
+            out.append(f"   bot đã trả lời: {said[r['id']]}")
+    return "\n".join(out)
+
+
 def handle(j):
     tk = L.token(env)
     m = L.get_msg(tk, j["id"])
@@ -67,6 +85,8 @@ def handle(j):
         f"lúc: {time.strftime('%H:%M %d/%m/%Y', time.localtime(j['time']))}\n"
         f"nội dung:\n{text}\n"
         + (f"\nđang trả lời trong luồng của tin gốc:\n{parent}\n" if parent else "")
+        + (f"\nCác tin gần đây trong nhóm (cũ → mới). Tin mới thường là bổ sung cho việc đang dở ở đây, "
+           f"ghép lại rồi xử lý, đừng hỏi lại cái đã có:\n{ctx}\n" if (ctx := recent(j)) else "")
         + f"\nXong thì BẮT BUỘC trả lời bằng: python3 tools/lark.py reply {j['id']} \"...\""
     )
     cmd = [claude_bin(), "-p", prompt, "--model", env.get("CLAUDE_MODEL", "sonnet"),

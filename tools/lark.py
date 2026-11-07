@@ -412,6 +412,9 @@ def main():
             print("--- trả lời cho tin:\n" + msg_text(get_msg(tk, m["parent_id"])))
     elif cmd == "reply":
         print("đã trả lời", reply(tk, a[0], a[1]))
+        os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)  # để lượt sau nhớ bot đã nói gì
+        with open(os.path.join(ROOT, "logs", "replies.jsonl"), "a") as f:
+            f.write(json.dumps({"to": a[0], "time": int(time.time()), "text": a[1]}, ensure_ascii=False) + "\n")
     elif cmd == "send":
         chat = a[1] if len(a) > 1 else env.get("CHAT_ID") or sys.exit("Thiếu chat_id (hoặc CHAT_ID trong env)")
         print("đã gửi", send(tk, chat, a[0]))
