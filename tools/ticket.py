@@ -7,7 +7,7 @@ Luồng cố định có nút bấm, KHÔNG gọi Claude → nhanh, không tốn
 Loại ticket (gộp 12 bảng Lark):
   /doi      Đổi hàng sau giao (DHS)        /doitruoc Đổi trước khi giao (DHT)
   /tra      Trả hàng hoàn tiền (THT)        /doihoan  Đòi hàng hoàn: đơn bom, đơn đổi quá hạn (DHH)
-  /rate     Rate tiêu cực (RTC)             /suco     Sự cố giao: bưu tá ký toàn phần, GH1P sai, thất lạc (SCG)
+  /suco     Sự cố giao: bưu tá ký toàn phần, GH1P sai, thất lạc (SCG)
   /hoan <MVĐ|mã đơn>  kho báo hàng hoàn về → ghép đúng ticket (không có thì mở HHV cho CS gắn đơn)
   /xem <ID|mã đơn|MVĐ>   /dangdo   /tk (menu)
 Mở ticket = nhắn RIÊNG với bot (có SĐT/địa chỉ). Nhóm "Đổi trả" chỉ thấy thẻ ticket không có SĐT/địa chỉ.
@@ -39,46 +39,39 @@ KENH = ["TikTok", "Shopee", "Website", "Facebook", "Khác"]
 LY_DO = {  # lý do -> lỗi do ai
     "Kho gửi sai size/mẫu/màu": "Kho", "Kho gửi thiếu hàng": "Kho", "Hàng lỗi sản xuất": "Sản xuất",
     "Hư hỏng khi vận chuyển": "ĐVVC", "KH đổi size/mẫu (không lỗi)": "Khách", "Khác": "Chưa rõ"}
-Q = {
-    "ma": ("Mã đơn", "text", "Mã đơn trên sàn / mã đơn web?"),
-    "kenh": ("Kênh", "choice", "Kênh bán?", KENH),
-    "ten": ("Tên KH", "text", "Tên khách?"),
-    "user": ("Tên KH", "text", "Tên / username khách?"),
-    "sdt": ("SĐT KH", "phone", "SĐT khách? (chỉ lưu Sheet, không hiện trong nhóm)"),
-    "dc": ("Địa chỉ KH", "text", "Địa chỉ nhận hàng đổi?"),
-    "sku_cu": ("SKU khách đang cầm", "text", "SKU khách đang cầm (mẫu-màu-size)?"),
-    "sku_moi": ("SKU đổi sang", "sku", "Đổi sang SKU nào?"),
-    "ly_do": ("Lý do", "choice", "Lý do?", list(LY_DO)),
-    "ly_do_truoc": ("Lý do", "choice", "Lý do đổi trước khi giao?",
-                    ["KH đổi ý trước khi giao", "Live/CS tư vấn sai", "Lên đơn nhầm", "Khác"]),
-    "ly_do_doi": ("Lý do", "choice", "Đòi hàng hoàn vì?",
-                  ["Đơn bom (KH không nhận)", "Đơn đổi quá hạn chưa hoàn về", "Hàng hoàn thất lạc", "Khác"]),
-    "suco": ("Lý do", "choice", "Sự cố gì?",
-             ["Bưu tá ký nhận toàn phần (không thu hàng cũ)", "Giao 1 phần sai", "Thất lạc", "Hư hỏng khi giao",
-              "Khác"]),
-    "sao": ("Lý do", "choice", "Khách đánh giá mấy sao?", ["1 sao", "2 sao", "3 sao"]),
-    "chi_tiet": ("Chi tiết", "text?", "Mô tả ngắn (gõ - nếu không có)"),
-    "noi_dung": ("Chi tiết", "text?", "Nội dung đánh giá của khách (gõ - nếu không có)"),
-    "anh": ("Ảnh", "photo", "Gửi ảnh (lỗi / tag / kiện / đánh giá…). Gửi xong bấm ✅ Xong ảnh."),
-    "chenh": ("Chênh giá KH trả thêm", "num", "Khách trả thêm bao nhiêu tiền chênh giá? (0 nếu cùng giá)"),
-    "tien": ("Tiền hoàn KH", "num", "Số tiền hoàn cho khách?"),
-    "mvd": ("MVĐ hoàn về", "text?", "Mã vận đơn của kiện (gõ - nếu chưa có)?"),
+LY_DO_LOAI = {
+    "doi": list(LY_DO), "tra": list(LY_DO),
+    "doitruoc": ["KH đổi ý trước khi giao", "Live/CS tư vấn sai", "Lên đơn nhầm", "Khác"],
+    "doihoan": ["Đơn bom (KH không nhận)", "Đơn đổi quá hạn chưa hoàn về", "Hàng hoàn thất lạc", "Khác"],
+    "suco": ["Bưu tá ký nhận toàn phần (không thu hàng cũ)", "Giao 1 phần sai", "Thất lạc", "Hư hỏng khi giao", "Khác"],
 }
-LOAI = {  # mã: (tiền tố, tên, câu hỏi, trạng thái đầu)
-    "doi": ("DHS", "Đổi hàng sau giao",
-            ["ma", "kenh", "ten", "sdt", "dc", "sku_cu", "sku_moi", "ly_do", "chi_tiet", "anh", "chenh"], "Chờ gọi KH"),
-    "doitruoc": ("DHT", "Đổi trước khi giao", ["ma", "kenh", "sku_cu", "sku_moi", "ly_do_truoc", "chi_tiet"],
-                 "Chờ kho đổi trong đơn"),
-    "tra": ("THT", "Trả hàng hoàn tiền", ["ma", "kenh", "ten", "sdt", "sku_cu", "ly_do", "chi_tiet", "anh", "tien"],
-            "Chờ duyệt"),
-    "doihoan": ("DHH", "Đòi hàng hoàn", ["ma", "kenh", "mvd", "ly_do_doi", "chi_tiet"], "Chờ đòi ĐVVC"),
-    "rate": ("RTC", "Rate tiêu cực", ["ma", "kenh", "user", "sao", "noi_dung", "anh"], "Chờ liên hệ KH"),
-    "suco": ("SCG", "Sự cố giao hàng", ["ma", "kenh", "mvd", "suco", "chi_tiet", "anh"], "Chờ khiếu nại ĐVVC"),
+# Ô trong mẫu dán: khoá -> (cột Sheet, kiểu, nhãn trong mẫu, các chữ nhận ra nhãn, câu hỏi khi thiếu)
+F = {
+    "ma": ("Mã đơn", "text", "Mã đơn", ("mã đơn", "ma don", "mã", "ma", "đơn", "don", "order"), "Mã đơn?"),
+    "ten": ("Tên KH", "text", "Tên KH", ("tên", "ten", "khách", "khach", "kh"), "Tên khách?"),
+    "sdt": ("SĐT KH", "phone", "SĐT", ("sđt", "sdt", "số điện thoại", "so dien thoai", "phone", "đt", "dt"),
+            "SĐT khách?"),
+    "dc": ("Địa chỉ KH", "text", "Địa chỉ", ("địa chỉ", "dia chi", "đc", "dc"), "Địa chỉ nhận hàng?"),
+    "sku": ("SKU", "sku", "SKU", ("sku", "mẫu", "mau", "size", "đổi", "doi"),
+            "SKU khách đang cầm → SKU đổi sang? (VD: SO-A4-RIVET-S → L)"),
+    "sku_cu": ("SKU khách đang cầm", "text", "SKU", ("sku", "mẫu", "mau", "sp"), "SKU khách trả?"),
+    "chenh": ("Chênh giá KH trả thêm", "num", "Bù thêm", ("bù", "bu", "chênh", "chenh", "cod"), ""),
+    "tien": ("Tiền hoàn KH", "num", "Tiền hoàn", ("tiền", "tien", "hoàn", "hoan"), "Số tiền hoàn cho khách?"),
+    "mvd": ("MVĐ hoàn về", "text", "MVĐ", ("mvđ", "mvd", "vận đơn", "van don", "mã vận"), ""),
+    "ghi": ("Chi tiết", "text", "Ghi chú", ("ghi chú", "ghi chu", "ghi", "mô tả", "mo ta", "note", "lỗi", "loi"), ""),
+}
+LOAI = {  # mã: (tiền tố, tên, ô trong mẫu (* = bắt buộc), trạng thái đầu)
+    "doi": ("DHS", "Đổi hàng sau giao", ["ma*", "ten*", "sdt*", "dc*", "sku*", "chenh", "ghi"], "Chờ gọi KH"),
+    "doitruoc": ("DHT", "Đổi trước khi giao", ["ma*", "sku*", "ghi"], "Chờ kho đổi trong đơn"),
+    "tra": ("THT", "Trả hàng hoàn tiền", ["ma*", "ten*", "sdt*", "sku_cu*", "tien*", "ghi"], "Chờ duyệt"),
+    "doihoan": ("DHH", "Đòi hàng hoàn", ["ma*", "mvd", "ghi"], "Chờ đòi ĐVVC"),
+    "suco": ("SCG", "Sự cố giao hàng", ["ma*", "mvd", "ghi"], "Chờ khiếu nại ĐVVC"),
     "hoan": ("HHV", "Hàng hoàn về (chưa rõ ticket)", [], "Chờ CS gắn đơn"),
 }
 TEN_LOAI = {v[1]: k for k, v in LOAI.items()}
 BTN = {
-    "Chờ gọi KH": [("📞 Đã gọi – KH đồng ý", "goi_ok"), ("📵 Chưa nghe máy", "goi_ko"), ("🗑 KH huỷ đổi", "huy")],
+    "Chờ gọi KH": [("📦 Đã gọi + tạo đơn đi (gõ MVĐ)", "don_di"), ("📵 Chưa nghe máy", "goi_ko"),
+                   ("🗑 KH huỷ đổi", "huy")],
     "Chờ tạo đơn đi": [("📦 Đã tạo đơn đi (gõ MVĐ)", "don_di")],
     "Chờ hàng hoàn về": [("📥 Kho nhận hàng hoàn", "nhan"), ("📣 Đã đòi ĐVVC", "doi_dvvc")],
     "Chờ nhập kho QLBH": [("✅ Đã nhập kho QLBH", "nhap")],
@@ -86,14 +79,13 @@ BTN = {
     "Chờ duyệt": [("✅ Duyệt", "duyet"), ("❌ Từ chối", "tuchoi")],
     "Chờ hoàn tiền": [("💸 Đã hoàn tiền KH", "hoan_tien")],
     "Chờ đòi ĐVVC": [("📣 Đã đòi ĐVVC", "doi_dvvc"), ("📥 Kho nhận hàng hoàn", "nhan")],
-    "Chờ liên hệ KH": [("✅ Đã xử lý cho KH", "xl_ok"), ("➖ Không xử lý được", "xl_ko")],
     "Chờ khiếu nại ĐVVC": [("📣 Đã khiếu nại ĐVVC", "kn")],
     "Chờ ĐVVC trả lời": [("✅ Đã giải quyết", "xl_ok"), ("💸 ĐVVC đền tiền", "den")],
     "Chờ CS gắn đơn": [("🔗 Gắn mã đơn / ticket", "gan"), ("✅ Đã nhập kho QLBH", "nhap")],
 }
 TINH_TRANG = ["✅ Nguyên vẹn", "⚠️ Không nguyên vẹn (lỗi/bẩn)", "🔀 Bị tráo hàng", "➖ Thiếu hàng"]
 XAU = TINH_TRANG[1:]
-LENH = ("/tk", "/ticket", "/doi", "/doitruoc", "/tra", "/doihoan", "/rate", "/suco", "/hoan", "/xem", "/dangdo",
+LENH = ("/tk", "/ticket", "/doi", "/doitruoc", "/tra", "/doihoan", "/suco", "/hoan", "/xem", "/dangdo",
         "/huy", "/start")
 
 E = {}
@@ -388,129 +380,221 @@ def refresh(r, note=None, notify=False):
             upd(r, {"Thẻ tin": TG.mk(tchat(), mid)})
 
 
-# ======================= phiếu hỏi (nhắn riêng) =======================
+# ======================= mở ticket (nhắn riêng): 1 tin dán mẫu + 1–2 nút =======================
+
+def o(k):
+    return k.rstrip("*")
+
+
+def mau(loai):
+    return "\n".join(f"{F[o(k)][2]}: " + ("cũ → mới" if o(k) == "sku" else "0" if o(k) == "chenh" else "")
+                     for k in LOAI[loai][2])
+
 
 def wiz_start(uid, chat, loai, by):
-    WIZ[uid] = {"loai": loai, "i": 0, "d": {}, "anh": [], "chat": chat, "by": by}
+    WIZ[uid] = {"loai": loai, "d": {}, "anh": [], "chat": chat, "by": by}
     _save()
-    pre, name, qs, _ = LOAI[loai]
-    tsend(chat, f"🎫 <b>{name}</b> — {len(qs)} câu. Gõ /huy để dừng.")
-    ask(uid)
+    tsend(chat, f"🎫 <b>{LOAI[loai][1]}</b>\nBấm vào mẫu dưới để chép, điền rồi gửi lại <b>1 tin</b> "
+                "(không cần đủ ô không bắt buộc; /huy để dừng):")
+    tsend(chat, f"<code>{esc(mau(loai))}</code>")
+
+
+def norm(s):
+    return re.sub(r"\s+", " ", s.strip().lower())
+
+
+def doc_sku(w, v):
+    m = re.split(r"\s*(?:→|->|=>|>|sang)\s*", v.strip(), maxsplit=1)
+    cu = m[0].strip()
+    w["d"]["SKU khách đang cầm"] = cu
+    if len(m) > 1 and m[1].strip():
+        moi = m[1].strip()
+        if "-" in cu and "-" not in moi and len(moi) <= 4:  # "SO-A4-RIVET-S → L"
+            moi = cu.rsplit("-", 1)[0] + "-" + moi
+        w["d"]["SKU đổi sang"] = moi
+        w["d"]["Tồn SKU đổi"] = ton(moi)
+
+
+def dat(w, key, v):
+    """Ghi 1 ô; trả lỗi (chữ) nếu sai."""
+    col, kind = F[key][0], F[key][1]
+    v = v.strip()
+    if v in ("", "-"):
+        return None
+    if kind == "phone":
+        d = re.sub(r"\D", "", v)
+        d = "0" + d[2:] if d.startswith("84") else d
+        if not re.fullmatch(r"0\d{9}", d):
+            return f"SĐT \"{v}\" chưa đúng (10 số)."
+        v = d
+    elif kind == "num":
+        n = parse_num(v)
+        if n is None:
+            return f"\"{v}\" chưa phải số tiền (VD 0, 25000, 50k)."
+        v = n
+    elif kind == "sku":
+        return doc_sku(w, v)
+    if key == "ma":
+        w["doan"] = doan_kenh(v)
+    w["d"][col] = v
+    return None
+
+
+def doc_mau(w, text):
+    """Đọc tin dán mẫu: dòng 'Nhãn: giá trị' (nhãn sai/thiếu thì điền theo thứ tự ô)."""
+    keys = [o(k) for k in LOAI[w["loai"]][2]]
+    loi, tu_do = [], []
+    da = set()
+    for line in [x for x in text.splitlines() if x.strip()]:
+        lab, sep, val = line.partition(":")
+        k = None
+        if sep:
+            nl = norm(lab)
+            for kk in keys:
+                if kk not in da and any(nl == a or nl.startswith(a + " ") for a in F[kk][3]):
+                    k = kk; break
+        if k is None:  # không nhãn: nhận SĐT / mã đơn theo dạng, còn lại điền theo thứ tự
+            raw = line.strip()
+            if "sdt" in keys and "sdt" not in da and re.fullmatch(r"[\d .+]{9,14}", raw):
+                k, val = "sdt", raw
+            elif "ma" in keys and "ma" not in da and doan_kenh(raw):
+                k, val = "ma", raw
+            else:
+                tu_do.append(raw)
+                continue
+        da.add(k)
+        e = dat(w, k, val)
+        if e:
+            loi.append(e)
+    for raw in tu_do:
+        for kk in keys:
+            if kk not in da and kk not in ("chenh",):
+                da.add(kk)
+                e = dat(w, kk, raw)
+                if e:
+                    loi.append(e)
+                break
+    w["form"] = True
+    return loi
+
+
+def thieu(w):
+    for k in LOAI[w["loai"]][2]:
+        if not k.endswith("*"):
+            continue
+        k = o(k)
+        if k == "sku":
+            if not w["d"].get("SKU khách đang cầm") or (w["loai"] in ("doi", "doitruoc") and not w["d"].get("SKU đổi sang")):
+                return k
+        elif not w["d"].get(F[k][0]):
+            return k
+    return None
+
+
+def can_anh(w):
+    if w["loai"] in ("doi", "tra"):
+        return LY_DO.get(w["d"].get("Lý do", "")) in ("Kho", "Sản xuất", "ĐVVC")
+    return w["loai"] == "suco"
+
+
+def buoc(w):
+    if not w.get("form"):
+        return "form"
+    k = thieu(w)
+    if k:
+        return k
+    if not w["d"].get("Kênh"):
+        return "kenh"
+    if not w["d"].get("Lý do"):
+        return "ly_do"
+    if can_anh(w) and not w.get("anh_xong"):
+        return "anh"
+    return None
 
 
 def ask(uid):
     w = WIZ[uid]
-    qs = LOAI[w["loai"]][2]
-    if w["i"] >= len(qs):
-        return confirm(uid)
-    q = Q[qs[w["i"]]]
-    col, kind, text = q[0], q[1], q[2]
-    b = None
-    if kind == "choice":
-        opts = list(q[3])
-        if qs[w["i"]] == "kenh" and w.get("doan"):
-            opts.remove(w["doan"]); opts.insert(0, w["doan"])
-        w["opts"] = opts
-        b = [[{"text": o + (" (đoán theo mã đơn)" if k == 0 and w.get("doan") == o else ""),
-               "callback_data": f"tk:w:{w['i']}:{k}"}] for k, o in enumerate(opts)]
-    elif kind == "photo":
-        b = [[{"text": "✅ Xong ảnh", "callback_data": f"tk:w:{w['i']}:xong"},
-              {"text": "Không có ảnh", "callback_data": f"tk:w:{w['i']}:bo"}]]
+    b = buoc(w)
     _save()
-    tsend(w["chat"], f"<b>{w['i'] + 1}/{len(qs)}</b> {esc(text)}", b)
+    if b is None:
+        return confirm(uid)
+    if b == "form":
+        return
+    if b == "kenh":
+        if w.get("doan"):
+            w["d"]["Kênh"] = w["doan"]
+            return ask(uid)
+        return tsend(w["chat"], "Kênh bán?", [[{"text": x, "callback_data": f"tk:w:kenh:{i}"}] for i, x in enumerate(KENH)])
+    if b == "ly_do":
+        return tsend(w["chat"], "Lý do?", [[{"text": x, "callback_data": f"tk:w:ly_do:{i}"}]
+                                           for i, x in enumerate(LY_DO_LOAI[w["loai"]])])
+    if b == "anh":
+        return tsend(w["chat"], "📷 Gửi ảnh (lỗi / tag / kiện), xong bấm ✅.",
+                     [[{"text": "✅ Xong ảnh", "callback_data": "tk:w:anh:xong"},
+                       {"text": "Không có ảnh", "callback_data": "tk:w:anh:bo"}]])
+    tsend(w["chat"], F[b][4])
 
 
 def wiz_text(uid, text):
     w = WIZ[uid]
-    qs = LOAI[w["loai"]][2]
-    key = qs[w["i"]] if w["i"] < len(qs) else None
-    if not key:
-        return tsend(w["chat"], "Bấm ✅ Tạo ticket hoặc 🗑 Huỷ ở tin trên.")
-    col, kind = Q[key][0], Q[key][1]
-    t = text.strip()
-    if kind == "choice":
-        return tsend(w["chat"], "Bấm 1 nút ở câu trên giúp mình nhé.")
-    if kind == "photo":
-        if t in ("-", "không", "ko", "xong"):
-            return wiz_choice(uid, w["i"], "xong" if w["anh"] or t == "xong" else "bo")
-        return tsend(w["chat"], "Gửi ảnh, rồi bấm ✅ Xong ảnh (hoặc Không có ảnh).")
-    if kind == "text?" and t == "-":
-        t = ""
-    elif kind == "phone":
-        d = re.sub(r"\D", "", t)
-        if d.startswith("84"):
-            d = "0" + d[2:]
-        if not re.fullmatch(r"0\d{9}", d):
-            return tsend(w["chat"], "SĐT chưa đúng (10 số, bắt đầu bằng 0). Gõ lại giúp mình.")
-        t = d
-    elif kind == "num":
-        n = parse_num(t)
-        if n is None:
-            return tsend(w["chat"], "Gõ số tiền thôi nhé (VD 0, 25000, 50k).")
-        t = n
-    elif len(t) < 2 and kind != "text?":
-        return tsend(w["chat"], "Ngắn quá, gõ lại giúp mình.")
-    w["d"][col] = t
-    if key == "ma":
-        w["doan"] = doan_kenh(t)
-        trung = find(t, open_only=True)
-        if trung and not w.get("trung_ok"):
-            w["trung"] = trung[0]["ID"]
-            _save()
-            return tsend(w["chat"], f"⚠️ Mã đơn này đang có ticket <b>{esc(trung[0]['ID'])}</b> "
-                                    f"({esc(trung[0].get('Loại'))} · {esc(trung[0].get('Trạng thái'))}). Vẫn tạo mới?",
-                         [[{"text": "Vẫn tạo mới", "callback_data": f"tk:w:{w['i']}:trung_ok"},
-                           {"text": "🗑 Thôi", "callback_data": f"tk:w:{w['i']}:huy"}]])
-    if key == "sku_moi":
-        w["d"]["Tồn SKU đổi"] = ton(t)
-        tsend(w["chat"], ("📦 Tồn theo bảng kho: " + esc(w["d"]["Tồn SKU đổi"])) if w["d"]["Tồn SKU đổi"]
-              else f"📦 Không thấy mẫu này trong bảng tình trạng hàng — check Nhanh: {esc(nhanh_link(t))}")
-    w["i"] += 1
-    ask(uid)
+    b = buoc(w)
+    if b == "form":
+        loi = doc_mau(w, text)
+        if loi:
+            tsend(w["chat"], "⚠️ " + "\n⚠️ ".join(esc(x) for x in loi))
+        return ask(uid)
+    if b in F:
+        e = dat(w, b, text)
+        if e:
+            return tsend(w["chat"], "⚠️ " + esc(e) + " Gõ lại giúp mình.")
+        return ask(uid)
+    if b == "anh":
+        if text.strip() in ("-", "không", "ko", "xong"):
+            w["anh_xong"] = True
+            return ask(uid)
+        return tsend(w["chat"], "Gửi ảnh rồi bấm ✅ Xong ảnh (hoặc Không có ảnh).")
+    if b in ("kenh", "ly_do"):
+        return tsend(w["chat"], "Bấm 1 nút ở trên giúp mình nhé.")
+    tsend(w["chat"], "Bấm ✅ Tạo ticket hoặc 🗑 Huỷ ở tin trên.")
 
 
 def wiz_photo(uid, m):
     w = WIZ[uid]
-    qs = LOAI[w["loai"]][2]
-    if w["i"] >= len(qs) or Q[qs[w["i"]]][1] != "photo":
-        return tsend(w["chat"], "Chưa tới câu gửi ảnh — trả lời câu đang hỏi trước nhé.")
     w["anh"].append(max(m["photo"], key=lambda p: p.get("file_size", 0))["file_id"])
     _save()
+    if buoc(w) != "anh":
+        return  # ảnh gửi sớm (kèm mẫu) vẫn giữ lại
     g = m.get("media_group_id")
     if g and w.get("g") == g:
         return
     w["g"] = g
-    tsend(w["chat"], f"📷 Đã nhận ảnh. Gửi thêm hoặc bấm ✅ Xong ảnh.",
-          [[{"text": "✅ Xong ảnh", "callback_data": f"tk:w:{w['i']}:xong"}]])
+    tsend(w["chat"], "📷 Đã nhận ảnh.", [[{"text": "✅ Xong ảnh", "callback_data": "tk:w:anh:xong"}]])
 
 
-def wiz_choice(uid, i, val, by=None):
+def wiz_choice(uid, key, val, by=None):
     w = WIZ.get(uid)
     if not w:
         return
     if val == "huy":
         WIZ.pop(uid, None); _save()
-        return tsend(w["chat"], "Đã huỷ phiếu.")
+        return tsend(w["chat"], "Đã huỷ.")
     if val == "tao":
         return create(uid)
     if val == "lam_lai":
         return wiz_start(uid, w["chat"], w["loai"], w["by"])
-    if int(i) != w["i"]:
+    if key == "trung":
+        w["trung_ok"] = True
+        return ask(uid)
+    if key != buoc(w):
         return  # nút cũ
-    qs = LOAI[w["loai"]][2]
-    key = qs[w["i"]]
-    if val == "trung_ok":
-        w["trung_ok"] = True; w["i"] += 1; return ask(uid)
-    if Q[key][1] == "photo":
+    if key == "anh":
         if val == "xong" and not w["anh"]:
             return tsend(w["chat"], "Chưa có ảnh nào. Gửi ảnh hoặc bấm Không có ảnh.")
-        w["i"] += 1
-        return ask(uid)
-    opt = w.get("opts") or Q[key][3]
-    v = opt[int(val)]
-    w["d"][Q[key][0]] = v
-    tsend(w["chat"], f"→ {esc(v)}")
-    w["i"] += 1
+        w["anh_xong"] = True
+    elif key == "kenh":
+        w["d"]["Kênh"] = KENH[int(val)]
+    elif key == "ly_do":
+        w["d"]["Lý do"] = LY_DO_LOAI[w["loai"]][int(val)]
     ask(uid)
 
 
@@ -534,12 +618,18 @@ def tinh_phi(d, loai):
 def confirm(uid):
     w = WIZ[uid]
     d = tinh_phi(w["d"], w["loai"])
+    trung = [x for x in find(d.get("Mã đơn", ""), open_only=True)] if not w.get("trung_ok") else []
     fake = dict(d, ID="(mới)", **{"Loại": LOAI[w["loai"]][1], "Trạng thái": LOAI[w["loai"]][3],
                                  "Người tạo": w["by"]})
+    t = card(fake, rieng=True) + (f"\n📷 {len(w['anh'])} ảnh" if w["anh"] else "")
+    if d.get("SKU đổi sang") and not d.get("Tồn SKU đổi"):
+        t += f"\n📦 Bảng kho chưa có mẫu này — <a href=\"{esc(nhanh_link(d['SKU đổi sang']))}\">check tồn Nhanh</a>"
+    if trung:
+        t += f"\n\n⚠️ Mã đơn này đang có <b>{esc(trung[0]['ID'])}</b> ({esc(trung[0].get('Trạng thái'))})"
     _save()
-    tsend(w["chat"], "Kiểm tra lại:\n\n" + card(fake, rieng=True) + (f"\n📷 {len(w['anh'])} ảnh" if w["anh"] else ""),
-          [[{"text": "✅ Tạo ticket", "callback_data": "tk:w:0:tao"}],
-           [{"text": "✏️ Làm lại", "callback_data": "tk:w:0:lam_lai"}, {"text": "🗑 Huỷ", "callback_data": "tk:w:0:huy"}]])
+    tsend(w["chat"], t, [[{"text": "✅ Tạo ticket", "callback_data": "tk:w:x:tao"}],
+                         [{"text": "✏️ Làm lại", "callback_data": "tk:w:x:lam_lai"},
+                          {"text": "🗑 Huỷ", "callback_data": "tk:w:x:huy"}]])
 
 
 def create(uid):
@@ -665,7 +755,6 @@ def act(cq, tid, a):
     elif a == "goi_ko":
         n = str(r.get("Gọi KH") or "").count("chưa nghe") + 1
         upd(r, {"Gọi KH": (str(r.get("Gọi KH") or "") + f" chưa nghe {now()};").strip()}, f"chưa nghe máy lần {n}", who)
-        return refresh(r, f"📵 Gọi lần {n} khách chưa nghe ({esc(who)})", True)
     elif a == "huy":
         upd(r, {"Trạng thái": "Đã huỷ", "Ngày đóng": today()}, "huỷ", who)
     elif a == "don_di":
@@ -677,7 +766,6 @@ def act(cq, tid, a):
         return
     elif a == "doi_dvvc":
         upd(r, {"Trạng thái": "Chờ hàng hoàn về"} if st == "Chờ đòi ĐVVC" else {}, "đã đòi ĐVVC", who)
-        return refresh(r, f"📣 {esc(who)} đã đòi ĐVVC", True)
     elif a == "nhap":
         upd(r, {"Nhập kho QLBH": f"✓ {who} {now()}"}, "nhập kho QLBH", who)
         return finish(r, who)
@@ -722,8 +810,6 @@ def tinh_trang(cq, tid, k):
     chat, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
     tedit(chat, mid, f"📥 {esc(tid)}: {esc(v)} — {esc(who)}")
     nhan_hoan(r, v, who)
-    prompt(chat, mid, tid, "anh_hoan", u, f"📷 {esc(who)} trả lời tin này bằng <b>ảnh kiện hàng hoàn</b> "
-                                         "(gõ - nếu không có ảnh)")
 
 
 def nhan_hoan(r, v, who):
@@ -783,8 +869,10 @@ def on_prompt_reply(m, p):
     if f == "don_di":
         parts = t.split()
         upd(r, {"MVĐ đi": parts[0], "MVĐ hoàn về": parts[1] if len(parts) > 1 else r.get("MVĐ hoàn về", ""),
-                "Ngày gửi đi": today(), "Trạng thái": "Chờ hàng hoàn về"}, f"tạo đơn đi {parts[0]}", who)
-        refresh(r, f"📦 Đã gửi đơn đi ({esc(who)}). Kho chờ nhận hàng hoàn.", True)
+                "Ngày gửi đi": today(), "Trạng thái": "Chờ hàng hoàn về",
+                "Gọi KH": (str(r.get("Gọi KH") or "") + f" đồng ý {now()}").strip()}, f"tạo đơn đi {parts[0]}", who)
+        tsend(chat, "✅", reply_to=m["message_id"])
+        refresh(r)
     elif f == "giai_trinh":
         upd(r, {"Kho giải trình": (str(r.get("Kho giải trình") or "") + f"\n{who}: {t}").strip()}, "kho giải trình", who)
         tsend(chat, "📝 Đã ghi giải trình.", reply_to=m["message_id"])
@@ -839,6 +927,15 @@ def cmd_hoan(m, arg):
               reply_to=m["message_id"])
         refresh(row)
     r = rs[0]
+    if m.get("photo"):  # chụp kiện, chú thích "/hoan MVĐ" → lưu ảnh luôn
+        fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"]
+        old = str(r.get("Ảnh hàng hoàn") or "")
+        upd(r, {"Ảnh hàng hoàn": (old + ", " if old else "") + "tg:" + fid}, "ảnh hàng hoàn", ten(u))
+        if not old:
+            try:
+                TG.xem_anh(BANG, r["_id"], "Ảnh hàng hoàn", TG.download(fid))
+            except BaseException as e:
+                print("ticket: ảnh xem lỗi", e, flush=True)
     b = [[{"text": t, "callback_data": f"tk:t:{r['ID']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
     tsend(chat, card(r) + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b, reply_to=m["message_id"])
 
@@ -961,7 +1058,10 @@ def handle(u):
         return tsend(chat, "Đã huỷ phiếu.")
     if private and uid in WIZ and not lenh:
         if m.get("photo"):
-            return wiz_photo(uid, m)
+            wiz_photo(uid, m)
+            if text and buoc(WIZ[uid]) == "form":
+                wiz_text(uid, text)
+            return
         return wiz_text(uid, text)
     if private and not is_member(uid):
         return tsend(chat, "Bot này chỉ làm việc trong nhóm của The Orbit. Bạn cần được thêm vào nhóm "
