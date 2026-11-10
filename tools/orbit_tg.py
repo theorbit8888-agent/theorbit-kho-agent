@@ -403,6 +403,25 @@ def fields(name):
             for c in cols]
 
 
+def xem_anh(table, rid, col, blob, name="anh.jpg"):
+    """Chèn bản thu nhỏ (480px) của ảnh vào ô "<col> (xem)" để mở Sheet là thấy (action "anh" của Apps Script,
+    phiên bản 4). Lỗi thì bỏ qua — ảnh gốc vẫn ở Telegram / trên máy."""
+    import base64, subprocess, tempfile
+    if not sheet_on() or not blob:
+        return
+    try:
+        src = tempfile.mktemp(suffix=os.path.splitext(name)[1] or ".jpg")
+        open(src, "wb").write(blob)
+        nho = tempfile.mktemp(suffix=".jpg")
+        subprocess.run(["/usr/bin/sips", "-Z", "480", "-s", "format", "jpeg", "-s", "formatOptions", "55", src,
+                        "--out", nho], capture_output=True)
+        data = open(nho, "rb").read() if os.path.exists(nho) else blob
+        kho("anh", table=sname(table), id=rid, col=f"{col} (xem)", b64=base64.b64encode(data).decode(), alt=name)
+        _CACHE.pop(sname(table), None)
+    except BaseException as e:  # kho() có thể sys.exit
+        print(f"(không chèn được ảnh xem vào Sheet: {e})", file=sys.stderr)
+
+
 # ======================= giả lập đường API Lark =======================
 
 def call(method, path, body=None):
