@@ -249,6 +249,41 @@ def chats():
     return [{"chat_id": e[k], "name": k} for k in sorted(e) if (k == "CHAT_ID" or k.endswith("_CHAT_ID")) and e[k]]
 
 
+# ======================= gửi song song sang Lark (tới khi bỏ hẳn Lark) =======================
+# Tin MỚI bot gửi vào nhóm (báo cáo, cảnh báo 9h, lệnh sản xuất...) gửi thêm 1 bản vào nhóm Lark cũ nếu env có
+# LARK_<tên biến nhóm> (VD LARK_CHAT_ID, LARK_SX_CHAT_ID). Tắt hẳn: LARK_MIRROR=0 hoặc xoá các dòng LARK_*.
+# Lỗi Lark (VD hết quota) không làm hỏng tin Telegram.
+
+def lark_mirror(tele_chat, text):
+    e = S["env"]
+    if e.get("LARK_MIRROR") == "0" or not e.get("APP_ID"):
+        return
+    var = next((k for k in e if (k == "CHAT_ID" or k.endswith("_CHAT_ID")) and not k.startswith("LARK_")
+                and str(e[k]) == str(tele_chat)), None)
+    lark_chat = e.get("LARK_" + var) if var else None
+    if not lark_chat:
+        return
+    api_ = "https://open.larksuite.com/open-apis"
+    try:
+        def post(path, body, tk=None):
+            req = urllib.request.Request(api_ + path, data=json.dumps(body).encode(), method="POST",
+                                         headers={"Content-Type": "application/json; charset=utf-8",
+                                                  **({"Authorization": "Bearer " + tk} if tk else {})})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                out = json.load(r)
+            if out.get("code"):
+                raise RuntimeError(f"{out.get('code')} {out.get('msg')}")
+            return out
+        tk = post("/auth/v3/tenant_access_token/internal", {"app_id": e["APP_ID"], "app_secret": e["APP_SECRET"]})[
+            "tenant_access_token"]
+        post("/im/v1/messages?receive_id_type=chat_id", {"receive_id": lark_chat, "msg_type": "text",
+                                                        "content": json.dumps({"text": text})}, tk)
+        print("(đã gửi thêm bản Lark)", file=sys.stderr)
+    except Exception as ex:
+        msg = ex.read().decode()[:200] if hasattr(ex, "read") else str(ex)[:200]
+        print(f"(bản Lark không gửi được: {msg})", file=sys.stderr)
+
+
 # ======================= Google Sheet (thay Lark Base) =======================
 
 def kho(action, **b):
@@ -413,7 +448,9 @@ def call(method, path, body=None):
 
     if u.path == "/im/v1/messages" and method == "POST":
         c = json.loads(body["content"])
-        return {"code": 0, "data": {"message_id": send(body["receive_id"], c.get("text", ""))}}
+        mid = send(body["receive_id"], c.get("text", ""))
+        lark_mirror(body["receive_id"], c.get("text", ""))
+        return {"code": 0, "data": {"message_id": mid}}
     if parts[:3] == ["im", "v1", "messages"] and len(parts) == 4 and method == "GET":
         return {"code": 0, "data": {"items": [get_msg(parts[3])]}}
     if parts[:3] == ["im", "v1", "messages"] and parts[-1] == "reply" and method == "POST":

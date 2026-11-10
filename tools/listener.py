@@ -130,7 +130,7 @@ def worker():
 def main():
     threading.Thread(target=worker, daemon=True).start()
     if TG.tg_on():
-        chats = [env.get("CHAT_ID")] + [v for k, v in env.items() if k.endswith("_CHAT_ID") and k != "SX_CHAT_ID"]
+        chats = [env.get("CHAT_ID")] + [v for k, v in env.items() if k.endswith("_CHAT_ID") and k != "SX_CHAT_ID" and not k.startswith("LARK_")]
         TG.poll(on_tele, chats, allow_users=[OWNER]); return
     import lark_oapi as lark
     from lark_oapi.api.im.v1 import P2ImMessageReceiveV1  # noqa: F401
