@@ -12,13 +12,13 @@ import glob, json, os, queue, subprocess, sys, threading, time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lark as L
-import lark_oapi as lark
-from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
+import orbit_tg as TG
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 LOG = os.path.join(ROOT, "logs")
 DRY = "--dry" in sys.argv
 env = L.load_env()
+OWNER = env.get("OWNER_TELE_ID", "")  # Telegram ID chủ shop (thay open_id Lark khi kiểm "chủ shop duyệt/chốt")
 jobs = queue.Queue()
 seen = set()
 
@@ -40,7 +40,7 @@ def claude_bin():
     return found[-1] if found else "claude"
 
 
-def on_message(data: P2ImMessageReceiveV1):
+def on_message(data):  # Lark (dự phòng khi không có TELEGRAM_BOT_TOKEN)
     m = data.event.message
     if m.message_id in seen:  # Lark có thể gửi lại cùng 1 sự kiện
         return
@@ -48,6 +48,14 @@ def on_message(data: P2ImMessageReceiveV1):
     jobs.put({"id": m.message_id, "chat": m.chat_id, "chat_type": m.chat_type,
               "parent": m.parent_id, "sender": data.event.sender.sender_id.open_id,
               "time": int(m.create_time) // 1000})
+
+
+def on_tele(j):
+    if j["id"] in seen:
+        return
+    seen.add(j["id"])
+    j["recv"] = time.time()
+    jobs.put(j)
 
 
 def recent(j, hours=3, n=6):
@@ -69,6 +77,8 @@ def recent(j, hours=3, n=6):
 
 
 def handle(j):
+    if j.get("album"):  # album ảnh tới thành nhiều tin liền nhau: chờ đủ ảnh rồi mới đọc
+        time.sleep(max(0, j["recv"] + 5 - time.time()))
     tk = L.token(env)
     m = L.get_msg(tk, j["id"])
     text = L.msg_text(m)
@@ -79,10 +89,12 @@ def handle(j):
     if DRY:
         return
     prompt = (
-        "Có tin Lark mới TAG bot kho. Xử lý theo CLAUDE.md.\n"
+        "Có tin " + ("Telegram" if TG.tg_on() else "Lark") + " mới TAG bot kho. Xử lý theo CLAUDE.md.\n"
         f"message_id: {j['id']}\nchat_id: {j['chat']} ({j['chat_type']})\n"
-        f"người gửi (open_id): {j['sender']}\n"
-        f"lúc: {time.strftime('%H:%M %d/%m/%Y', time.localtime(j['time']))}\n"
+        + (f"người gửi: {j.get('sender_name', '')} (Telegram ID {j['sender']})"
+           + (" — CHỦ SHOP" if OWNER and j["sender"] == OWNER else "") + "\n"
+           if TG.tg_on() else f"người gửi (open_id): {j['sender']}\n")
+        + f"lúc: {time.strftime('%H:%M %d/%m/%Y', time.localtime(j['time']))}\n"
         f"nội dung:\n{text}\n"
         + (f"\nđang trả lời trong luồng của tin gốc:\n{parent}\n" if parent else "")
         + (f"\nCác tin gần đây trong nhóm (cũ → mới). Tin mới thường là bổ sung cho việc đang dở ở đây, "
@@ -117,6 +129,11 @@ def worker():
 
 def main():
     threading.Thread(target=worker, daemon=True).start()
+    if TG.tg_on():
+        chats = [env.get("CHAT_ID")] + [v for k, v in env.items() if k.endswith("_CHAT_ID") and k != "SX_CHAT_ID"]
+        TG.poll(on_tele, chats, allow_users=[OWNER]); return
+    import lark_oapi as lark
+    from lark_oapi.api.im.v1 import P2ImMessageReceiveV1  # noqa: F401
     h = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(on_message).build()
     cli = lark.ws.Client(env["APP_ID"], env["APP_SECRET"], event_handler=h,
                          domain=lark.LARK_DOMAIN, log_level=lark.LogLevel.WARNING)

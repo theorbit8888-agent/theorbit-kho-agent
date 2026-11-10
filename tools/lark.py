@@ -21,6 +21,8 @@ Lark Base "THE ORBIT — Product Launch & Restock":
 <bảng> = số đầu tên ("02", "05") hoặc một phần tên ("HÀNG ĐẶT LẠI"). Ngày ghi dạng 2026-11-04.
 """
 import json, os, re, sys, time, urllib.request, urllib.error, urllib.parse
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import orbit_tg as TG  # Telegram + Google Sheet thay Lark (xem đầu file orbit_tg.py)
 from datetime import date, datetime, timedelta
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -74,10 +76,13 @@ def load_env():
         for line in f:
             if "=" in line and not line.startswith("#"):
                 k, v = line.strip().split("=", 1); d[k] = v
+    TG.init(d, SCHEMA, ROOT)
     return d
 
 
 def call(method, path, tk=None, body=None):
+    if TG.handles(path):
+        return TG.call(method, path, body)
     req = urllib.request.Request(API + path, method=method,
         data=json.dumps(body).encode() if body is not None else None,
         headers={"Content-Type": "application/json; charset=utf-8",
@@ -93,6 +98,8 @@ def call(method, path, tk=None, body=None):
 
 
 def token(env):
+    if TG.tg_on() or TG.sheet_on():
+        return "tg"
     r = call("POST", "/auth/v3/tenant_access_token/internal",
              body={"app_id": env["APP_ID"], "app_secret": env["APP_SECRET"]})
     return r["tenant_access_token"]
