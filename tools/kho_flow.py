@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import orbit_tg as TG  # noqa: E402
 import ticket as TK  # noqa: E402
+import nhanh as NH  # noqa: E402  (chỉ đọc cache logs/nhanh/, đồng bộ bằng `nhanh.py sync`)
 
 ROOT = TK.ROOT
 NHAP = "03 · NHẬP KHO"
@@ -211,7 +212,11 @@ def chotdi(m, arg):
         if not t or t[0].lower() not in SAN:
             continue
         san = SAN[t[0].lower()]
-        n = [int(x) for x in t[1:] if x.isdigit()] + [0, 0, 0, 0]
+        so = [int(x) for x in t[1:] if x.isdigit()]
+        if len(so) == 1:  # chỉ số kiện bàn giao thực tế → so với Nhanh
+            L.append(so_voi_nhanh(san, so[0], who)); lech_all += ["x"] if "⚠️" in L[-1] else []
+            continue
+        n = so + [0, 0, 0, 0]
         can, dong, giao, huy = n[:4]
         if not (can or dong or giao or huy):
             continue
@@ -244,6 +249,91 @@ def chotdi(m, arg):
           if lech_all else None, reply_to=m["message_id"])
 
 
+NH_KENH = {"TikTok": "tiktok", "Shopee": "shopee", "Web/Meta": "ngoai"}
+
+
+def so_voi_nhanh(san, giao, who):
+    cc = NH.chot_ca().get(NH_KENH.get(san), {"chua_gui": [], "gui_hom_nay": 0})
+    nh = cc["gui_hom_nay"]
+    chua = len(cc["chua_gui"])
+    lech = giao - nh
+    ghi = ("khớp Nhanh" if not lech else f"bàn giao {giao} ≠ Nhanh {nh}") + (f"; còn {chua} đơn chưa gửi" if chua else "")
+    key = f"{today()} - {san}"
+    f = {"Ngày - Sàn": key, "Ngày": today(), "Sàn": san, "Đơn cần gửi": nh + chua, "Đã bàn giao ĐVVC": giao,
+         "Lệch/ghi chú": ghi, "Người làm": who}
+    old = [r for r in TG.rows(DS, fresh=True) if r.get("Ngày - Sàn") == key]
+    TG.kho("update", table=TG.sname(DS), id=old[0]["_id"], fields=f) if old else TG.kho("add", table=TG.sname(DS), rows=[f])
+    return (f"{'✅' if not lech and not chua else '⚠️'} <b>{san}</b>: bàn giao {giao} · Nhanh ghi gửi ĐVVC hôm nay {nh}"
+            + (f"\n   → <b>lệch {'+' if lech > 0 else ''}{lech}</b>" if lech else "")
+            + (f"\n   → còn <b>{chua}</b> đơn chưa gửi" if chua else ""))
+
+
+def bao_nhanh_chot_ca():
+    """Khối tóm tắt từ Nhanh cho tin 17h."""
+    if not NH.con_moi(120):
+        return ""
+    L = [f"📊 <b>Nhanh.vn</b> (cập nhật {NH.meta().get('dong_bo', '')[11:]}):"]
+    for k, v in NH.chot_ca().items():
+        if not v["chua_gui"] and not v["gui_hom_nay"]:
+            continue
+        cg = v["chua_gui"]
+        L.append(f"• {NH.TEN_KENH.get(k, k)}: gửi ĐVVC hôm nay <b>{v['gui_hom_nay']}</b>"
+                 + (f" · <b>còn {len(cg)} đơn chưa gửi</b>: " + ", ".join(f"{o['ma_san'] or o['id']} ({o['st_ten']})"
+                                                                     for o in cg[:6]) + ("…" if len(cg) > 6 else "")
+                    if cg else " · hết đơn chờ"))
+    return "\n".join(L)
+
+
+def doi_soat_hoan_nhanh():
+    """So đơn đang/đã hoàn trên Nhanh với kiện kho đã quét /hoan. Trả (text, số thiếu)."""
+    if not NH.con_moi(120):
+        return "", 0
+    ds = NH.hang_hoan()
+    da = {str(r.get("MVĐ", "")).lower() for r in TG.rows(TK.HOAN, fresh=True) if r.get("Người nhận")}
+    thieu = [o for o in ds if o["mvd"].lower() not in da and o["ma_san"].lower() not in da]
+    co = len(ds) - len(thieu)
+    t = (f"↩️ <b>Hàng hoàn (Nhanh ↔ kho quét)</b>: Nhanh có <b>{len(ds)}</b> đơn hoàn/đang hoàn · kho đã quét <b>{co}</b>"
+         + (f" · <b>chưa thấy {len(thieu)}</b>" if thieu else " ✅"))
+    if thieu:
+        t += "\n" + "\n".join(f"• <code>{esc(o['mvd'])}</code> {NH.TEN_KENH.get(o['kenh'], '')} {esc(o['st_ten'])} "
+                               f"({esc(o['dvvc'])})" for o in thieu[:30])
+        t += "\nShipper trả kiện nào thì quét <code>/hoan MVĐ</code>; kiện không về → đòi shipper / ĐVVC."
+    return t, len(thieu)
+
+
+def canh_bao_nhap(ngay=14, cover=7, toi_thieu=5):
+    """Từ Nhanh: SKU sắp cháy (tồn bán được < `cover` ngày theo tốc độ bán 14 ngày) và SKU nên xả (tồn nhiều, 14 ngày
+    không bán). Giống báo cáo "Cảnh báo nhập hàng ngay / Cảnh báo SKU cần xả tồn" của Base kho KB Group."""
+    if not NH.con_moi(240):
+        return ""
+    ban = {}
+    for o in NH.orders().values():
+        if o["st"] in (58, 63, 64):  # huỷ
+            continue
+        for x in o["sp"]:
+            ban[x["ma"]] = ban.get(x["ma"], 0) + int(x.get("sl") or 0)
+    chay, xa = [], []
+    for ma, p in NH.products().items():
+        if ma.startswith(("TEST", "PK-A0-STICKER", "CB-")):  # combo: tồn tính theo SP con
+            continue
+        sl, ton = ban.get(ma, 0), int(p.get("co_the_ban") or 0)
+        if sl >= toi_thieu:
+            ngay_con = ton / (sl / ngay)
+            if ngay_con < cover:
+                chay.append((ngay_con, ma, ton, sl))
+        elif sl == 0 and int(p.get("trong_kho") or 0) >= 50:
+            xa.append((int(p.get("trong_kho") or 0), ma))
+    chay.sort(); xa.sort(reverse=True)
+    t = ""
+    if chay:
+        t += (f"🔥 <b>Sắp cháy hàng</b> (bán {ngay} ngày, còn bán được < {cover} ngày):\n"
+              + "\n".join(f"• {esc(ma)}: còn {ton}, bán {sl}/{ngay}n → <b>~{d:.0f} ngày</b>" for d, ma, ton, sl in chay[:15]))
+    if xa:
+        t += ("\n\n🧊 <b>Tồn nhiều, {0} ngày không bán</b> (cân nhắc xả/đẩy ads):\n".format(ngay)
+              + "\n".join(f"• {esc(ma)}: {n}" for n, ma in xa[:10]))
+    return t.strip()
+
+
 # ======================= /chothoan =======================
 
 def chothoan(m, arg):
@@ -253,8 +343,12 @@ def chothoan(m, arg):
         if x.lower() not in SAN and x.lower() not in san_bao:
             san_bao.append(x.lower()); goc[x.lower()] = x
     if not san_bao:
-        return tsend(chat, "Dán danh sách MVĐ sàn báo đã hoàn về kho (mỗi dòng 1 mã). Mẫu:\n" + MAU["chothoan"],
-                     reply_to=m["message_id"])
+        t, thieu = doi_soat_hoan_nhanh()
+        if t:
+            return tsend(chat, t, [[{"text": "📣 Đã đòi shipper", "callback_data": f"kf:doiship:{today()}"}]]
+                         if thieu else None, reply_to=m["message_id"])
+        return tsend(chat, "Chưa có dữ liệu Nhanh mới. Dán danh sách MVĐ sàn báo đã hoàn (mỗi dòng 1 mã). Mẫu:\n"
+                     + MAU["chothoan"], reply_to=m["message_id"])
     rows = TG.rows(TK.HOAN, fresh=True)
     nhan = {str(r.get("MVĐ", "")).lower(): r for r in rows if r.get("Người nhận")}
     co, thieu = [], []
@@ -302,10 +396,16 @@ def kiemkho(m, arg):
     rows, L, lech_n = [], [], 0
     for line in [x for x in arg.splitlines() if x.strip()]:
         d = doc_dong(line)
-        if not d or len(d[2]) < 2:
+        if not d or not d[2]:
             continue
         mau, size, nums = d
-        nhanh, thuc = nums[0], nums[1]
+        if len(nums) == 1:  # chỉ ghi số đếm → lấy tồn trong kho từ Nhanh
+            p = NH.ton_sku(f"{mau}-{size}" if size else mau)
+            if p is None or p.get("trong_kho") is None:
+                continue
+            nhanh, thuc = int(p["trong_kho"] or 0), nums[0]
+        else:
+            nhanh, thuc = nums[0], nums[1]
         lech = thuc - nhanh
         sku = f"{mau}-{size}" if size and "-" in mau else f"{mau} {size}".strip()
         rows.append({"Ngày": today(), "SKU": sku, "Tên mẫu": ten_mau(mau), "Tồn Nhanh": nhanh, "Đếm thực tế": thuc,
@@ -411,9 +511,18 @@ def hen(send=False):
     if h < 12:
         maus = goi_y_kiem()
         cho = [r for r in TG.rows(TK.HOAN, fresh=True) if not r.get("Người nhận")]
-        mau_kiem = "/kiemkho\n(SKU | tồn Nhanh | đếm thực tế)\n" + "\n".join(f"{k}-{s} " for k in maus for s in (sku_bang()[k][1] or [""]))
-        out = ("🔢 <b>Kiểm kho hôm nay</b> (xoay vòng, đếm xong điền tồn Nhanh + số đếm):\n"
-               f"<code>{esc(mau_kiem)}</code>")
+        co_nh = NH.con_moi(180)
+        mau_kiem = ("/kiemkho\n(SKU | số đếm)\n" if co_nh else "/kiemkho\n(SKU | tồn Nhanh | đếm thực tế)\n") + \
+            "\n".join(f"{k}-{s} " for k in maus for s in (sku_bang()[k][1] or [""]))
+        out = ("🔢 <b>Kiểm kho hôm nay</b> (xoay vòng): "
+               + ("đếm rồi ghi <b>số đếm</b> sau mỗi SKU, bot tự lấy tồn Nhanh lúc gửi:\n" if co_nh
+                  else "đếm xong điền tồn Nhanh + số đếm:\n") + f"<code>{esc(mau_kiem)}</code>")
+        hoan_t, thieu = doi_soat_hoan_nhanh()
+        if thieu:
+            out += "\n\n" + hoan_t
+        cb = canh_bao_nhap()
+        if cb:
+            out += "\n\n" + cb
         if cho:
             out += (f"\n\n↩️ <b>{len(cho)} kiện sàn báo hoàn mà kho chưa nhận</b>:\n"
                     + "\n".join(f"• <code>{esc(r.get('MVĐ'))}</code> (báo {esc(r.get('Sàn báo hoàn'))})" for r in cho[:30])
@@ -423,14 +532,38 @@ def hen(send=False):
         nhan = len([r for r in TG.rows(TK.HOAN, fresh=True) if r.get("Ngày") == today() and r.get("Người nhận")])
         if h >= 18 and {"TikTok", "Shopee"} <= da:
             return print("đã chốt ca, không nhắc")
-        out = ("🕔 <b>CHỐT CA</b>" + (" — nhắc lại, chưa thấy chốt" if h >= 18 else "")
-               + f"\nHôm nay kho đã quét {nhan} kiện hoàn.\n\n"
-               f"1️⃣ Chốt đơn đi:\n<code>{esc(MAU['chotdi'])}</code>\n\n"
-               f"2️⃣ Đối soát hàng hoàn: vào Seller Center/Nhanh lấy danh sách đơn đã hoàn hôm nay, dán:\n"
-               f"<code>{esc(MAU['chothoan'])}</code>")
+        nh = bao_nhanh_chot_ca()
+        hoan_t, _ = doi_soat_hoan_nhanh()
+        if nh:
+            out = ("🕔 <b>CHỐT CA</b>" + (" — nhắc lại, chưa thấy chốt" if h >= 18 else "")
+                   + f"\nHôm nay kho đã quét {nhan} kiện hoàn.\n\n{nh}\n\n{hoan_t}\n\n"
+                   "1️⃣ Đếm kiện đã bàn giao shipper (theo biên bản) rồi gửi:\n"
+                   "<code>/chotdi\nTikTok \nShopee \nWeb </code>\n"
+                   "2️⃣ Hàng hoàn: quét nốt kiện shipper vừa trả bằng <code>/hoan MVĐ</code>, rồi gõ /chothoan để đối soát lại.")
+        else:
+            out = ("🕔 <b>CHỐT CA</b>" + (" — nhắc lại, chưa thấy chốt" if h >= 18 else "")
+                   + f"\nHôm nay kho đã quét {nhan} kiện hoàn. (Chưa đọc được Nhanh — điền tay)\n\n"
+                   f"1️⃣ Chốt đơn đi:\n<code>{esc(MAU['chotdi'])}</code>\n\n"
+                   f"2️⃣ Đối soát hàng hoàn: lấy danh sách đơn đã hoàn hôm nay trên Nhanh/Seller Center, dán:\n"
+                   f"<code>{esc(MAU['chothoan'])}</code>")
     print(re.sub(r"<[^>]+>", "", out))
     if send and kchat():
         tsend(kchat(), out)
+
+
+def nhanh_tt(m, arg):
+    mt = NH.meta()
+    if not mt:
+        return tsend(m["chat"]["id"], "Chưa đọc Nhanh lần nào (chủ shop nhắn /dangnhapnhanh cho bot).", reply_to=m["message_id"])
+    t = (f"📊 Nhanh.vn — cập nhật {esc(mt.get('dong_bo'))}, {mt.get('so_sp')} SKU, {mt.get('so_don')} đơn 14 ngày"
+         + (f"\n⚠️ Lỗi gần nhất: {esc(mt.get('loi'))}" if mt.get("loi") else ""))
+    if arg.strip():
+        p = NH.ton_sku(arg.strip())
+        t += (f"\n<b>{esc(arg.strip().upper())}</b>: trong kho {p['trong_kho']} · có thể bán {p['co_the_ban']} · "
+              f"đang giao {p['dang_giao']} · lỗi {p['loi']}") if p else f"\nKhông thấy SKU {esc(arg)}"
+    else:
+        t += "\n" + bao_nhanh_chot_ca()
+    tsend(m["chat"]["id"], t, reply_to=m["message_id"])
 
 
 def setup():
@@ -438,7 +571,41 @@ def setup():
                             TG.sname(NHAP): ["Ảnh bill", "Ảnh bill (xem)"]})
 
 
-TK.EXT_CMDS.update({"/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu})
+# ======================= cảnh báo từ Seller Center (TikTok/Shopee) =======================
+
+def san_bao(d, send=False, luon=False):
+    """d = {"tiktok": {...}, "shopee": {...}} do tác vụ lịch (Claude in Chrome, Chrome của chủ shop) đọc từ Seller Center.
+    Chỉ gửi nhóm kho khi có việc gấp (tự huỷ, quá hạn, hoả tốc, huỷ sau chuẩn bị hàng) hoặc luon=True."""
+    tt, sp = d.get("tiktok") or {}, d.get("shopee") or {}
+    g = lambda x, k: int(x.get(k) or 0)
+    L, gap = [], False
+    if tt:
+        L.append(f"<b>TikTok</b>: cần gửi trong 24h <b>{g(tt, 'can_gui_24h')}</b>"
+                 + (f" (hoả tốc {g(tt, 'hoa_toc')})" if g(tt, "hoa_toc") else "")
+                 + (f" · ⚠️ <b>sắp tự huỷ {g(tt, 'tu_huy_24h')}</b>" if g(tt, "tu_huy_24h") else "")
+                 + (f" · ⛔ <b>quá hạn {g(tt, 'qua_han')}</b>" if g(tt, "qua_han") else "")
+                 + (f" · vấn đề gửi hàng/kho vận {g(tt, 'van_de_kho')}" if g(tt, "van_de_kho") else "")
+                 + (f" · yêu cầu trả hàng {g(tt, 'tra_hang')}" if g(tt, "tra_hang") else ""))
+        gap |= bool(g(tt, "tu_huy_24h") or g(tt, "qua_han") or g(tt, "hoa_toc"))
+    if sp:
+        L.append(f"<b>Shopee</b>: chờ lấy hàng {g(sp, 'cho_lay')}"
+                 + (f" · 🔥 <b>hoả tốc cần bàn giao ngay {g(sp, 'hoa_toc_can_ban_giao')}</b>" if g(sp, "hoa_toc_can_ban_giao") else "")
+                 + (f" · ⛔ <b>{g(sp, 'huy_sau_chuan_bi')} đơn huỷ sau khi chuẩn bị hàng → GIỮ LẠI kiện, không giao ĐVVC</b>"
+                    if g(sp, "huy_sau_chuan_bi") else "")
+                 + (f" · trả hàng/huỷ {g(sp, 'tra_hang_huy')}" if g(sp, "tra_hang_huy") else ""))
+        gap |= bool(g(sp, "hoa_toc_can_ban_giao") or g(sp, "huy_sau_chuan_bi"))
+    if not L:
+        return print("không có số liệu sàn")
+    t = f"🛒 <b>SÀN {datetime.now():%H:%M}</b>\n" + "\n".join(L)
+    if d.get("ghi_chu"):
+        t += "\n" + esc(d["ghi_chu"])[:400]
+    print(re.sub(r"<[^>]+>", "", t))
+    if send and kchat() and (gap or luon):
+        tsend(kchat(), t)
+
+
+TK.EXT_CMDS.update({"/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
+                    "/nhanh": nhanh_tt})
 TK.EXT_CB["kf"] = on_cb
 TK.EXT_REPLY.update({"kf_nhanh": on_reply, "kf_lechdi": on_reply})
 if not hasattr(TK, "STATE_KF"):
@@ -452,5 +619,8 @@ if __name__ == "__main__":
         TK.setup(); setup(); print("đã tạo bảng 09, 10, cột ảnh bill")
     elif a[0] == "hen":
         hen("--send" in a)
+    elif a[0] == "sanbao":  # python3 tools/kho_flow.py sanbao '<json>' [--send] [--luon]
+        import json as _j
+        san_bao(_j.loads(a[1]), "--send" in a, "--luon" in a)
     else:
         print(__doc__)

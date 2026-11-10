@@ -74,5 +74,46 @@ cat > "$KF" <<EOF
   <key>StandardErrorPath</key><string>$DIR/logs/flow.out</string>
 </dict></plist>
 EOF
-for p in "$PLIST" "$NHAC" "$TK" "$KF"; do launchctl unload "$p" 2>/dev/null || true; launchctl load "$p"; done
+# Đọc Nhanh.vn (đơn TikTok/Shopee/ngoài sàn + tồn) 30 phút/lần, 7h–23h, Chrome ẩn hồ sơ riêng (tools/nhanh.py)
+NH=~/Library/LaunchAgents/vn.theorbit.kho-agent.nhanh.plist
+cat > "$NH" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>vn.theorbit.kho-agent.nhanh</string>
+  <key>ProgramArguments</key><array>
+    <string>$DIR/.venv/bin/python</string><string>$DIR/tools/nhanh.py</string><string>sync</string><string>--gio</string>
+  </array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>1800</integer>
+  <key>StandardOutPath</key><string>$DIR/logs/nhanh-sync.out</string>
+  <key>StandardErrorPath</key><string>$DIR/logs/nhanh-sync.out</string>
+</dict></plist>
+EOF
+# CS + cửa hàng (tools/cua_hang.py hen): 10/14/18h việc treo, 21:30 sổ CK cho chủ shop, 21:50 nhắc chốt ca, CN 22h báo cáo tuần
+CHJ=~/Library/LaunchAgents/vn.theorbit.kho-agent.cuahang.plist
+cat > "$CHJ" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>vn.theorbit.kho-agent.cuahang</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string><string>$DIR/tools/cua_hang.py</string><string>hen</string><string>--send</string>
+  </array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>StartCalendarInterval</key><array>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>50</integer></dict>
+    <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>5</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>$DIR/logs/cuahang.out</string>
+  <key>StandardErrorPath</key><string>$DIR/logs/cuahang.out</string>
+</dict></plist>
+EOF
+# job đọc Nhanh ($NH) chỉ bật sau khi đăng nhập Nhanh (nhanh.py login tự bật)
+for p in "$PLIST" "$NHAC" "$TK" "$KF" "$CHJ"; do launchctl unload "$p" 2>/dev/null || true; launchctl load "$p"; done
 echo "Đã bật listener + cảnh báo 9h + ticket 9:05 + việc kho 9:02/17:00/18:00. Log: $DIR/logs/listener.out, nhac.out, ticket-nhac.out, flow.out"

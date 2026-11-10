@@ -32,7 +32,7 @@ COLS = ["ID", "Loại", "Trạng thái", "Ngày tạo", "Người tạo", "Kênh
         "Chênh giá KH trả thêm", "Phí ship shop trả", "Phí ship KH trả", "Tiền hoàn KH", "Tổng chi phí shop",
         "Gọi KH", "MVĐ đi", "MVĐ hoàn về", "Ngày gửi đi", "Ngày hàng hoàn về", "Tình trạng hàng hoàn",
         "Người nhận hoàn", "Ảnh hàng hoàn", "Ảnh hàng hoàn (xem)", "Nhập kho QLBH", "Cần duyệt", "Duyệt",
-        "Phạt kho", "Kho giải trình", "Ngày đóng", "Thẻ tin", "Lịch sử"]
+        "Phạt kho", "Kho giải trình", "Ngày đóng", "Thẻ tin", "Lịch sử", "STK hoàn"]
 DONG = ("Đóng", "Đã huỷ")
 
 KENH = ["TikTok", "Shopee", "Website", "Facebook", "Khác"]
@@ -58,12 +58,13 @@ F = {
     "chenh": ("Chênh giá KH trả thêm", "num", "Bù thêm", ("bù", "bu", "chênh", "chenh", "cod"), ""),
     "tien": ("Tiền hoàn KH", "num", "Tiền hoàn", ("tiền", "tien", "hoàn", "hoan"), "Số tiền hoàn cho khách?"),
     "mvd": ("MVĐ hoàn về", "text", "MVĐ", ("mvđ", "mvd", "vận đơn", "van don", "mã vận"), ""),
+    "stk": ("STK hoàn", "text", "STK hoàn", ("stk", "số tk", "tài khoản", "tai khoan", "ngân hàng", "bank"), ""),
     "ghi": ("Chi tiết", "text", "Ghi chú", ("ghi chú", "ghi chu", "ghi", "mô tả", "mo ta", "note", "lỗi", "loi"), ""),
 }
 LOAI = {  # mã: (tiền tố, tên, ô trong mẫu (* = bắt buộc), trạng thái đầu)
     "doi": ("DHS", "Đổi hàng sau giao", ["ma*", "ten*", "sdt*", "dc*", "sku*", "chenh", "ghi"], "Chờ gọi KH"),
     "doitruoc": ("DHT", "Đổi trước khi giao", ["ma*", "sku*", "ghi"], "Chờ kho đổi trong đơn"),
-    "tra": ("THT", "Trả hàng hoàn tiền", ["ma*", "ten*", "sdt*", "sku_cu*", "tien*", "ghi"], "Chờ duyệt"),
+    "tra": ("THT", "Trả hàng hoàn tiền", ["ma*", "ten*", "sdt*", "sku_cu*", "tien*", "stk", "ghi"], "Chờ duyệt"),
     "doihoan": ("DHH", "Đòi hàng hoàn", ["ma*", "mvd", "ghi"], "Chờ đòi ĐVVC"),
     "suco": ("SCG", "Sự cố giao hàng", ["ma*", "mvd", "ghi"], "Chờ khiếu nại ĐVVC"),
     "hoan": ("HHV", "Hàng hoàn về (chưa rõ ticket)", [], "Chờ CS gắn đơn"),
@@ -86,7 +87,7 @@ BTN = {
 TINH_TRANG = ["✅ Nguyên vẹn", "⚠️ Không nguyên vẹn (lỗi/bẩn)", "🔀 Bị tráo hàng", "➖ Thiếu hàng"]
 XAU = TINH_TRANG[1:]
 LENH = ("/tk", "/ticket", "/doi", "/doitruoc", "/tra", "/doihoan", "/suco", "/hoan", "/xem", "/dangdo",
-        "/huy", "/start")
+        "/huy", "/start", "/dangnhapnhanh")
 
 E = {}
 ME = {}
@@ -294,7 +295,16 @@ def doan_kenh(ma):
 
 
 def ton(sku):
-    """Tra tồn trong bảng 05 TÌNH TRẠNG HÀNG của kho (gần đúng theo chữ)."""
+    """Tồn thật từ Nhanh.vn (cache nhanh.py); chưa có thì tra bảng 05 TÌNH TRẠNG HÀNG (gần đúng theo chữ)."""
+    try:
+        import nhanh as NH
+        p = NH.ton_sku(sku)
+        if p is not None and NH.con_moi(180):
+            return (f"Nhanh: có thể bán {p.get('co_the_ban')}, trong kho {p.get('trong_kho')}"
+                    + (f", đang giao {p.get('dang_giao')}" if p.get("dang_giao") else "")
+                    + f" ({NH.meta().get('dong_bo', '')[11:]})")
+    except Exception:
+        pass
     try:
         rs = TG.rows("05 · TÌNH TRẠNG HÀNG")
     except BaseException:
@@ -311,9 +321,21 @@ def ton(sku):
 
 
 def nhanh_link(sku):
-    import urllib.parse
-    return ("https://nhanh.vn/product/item/index?storeId=143192&depotId%5B%5D=146426&name="
-            + urllib.parse.quote(sku) + "&remainByPr=0")
+    import nhanh as NH
+    return NH.link_sp(sku)
+
+
+def don_nhanh(ma):
+    """Dòng mô tả đơn trên Nhanh theo MVĐ/mã đơn (để kho đối chiếu hàng trong kiện)."""
+    try:
+        import nhanh as NH
+        o = NH.don_theo_ma(ma)
+    except Exception:
+        return ""
+    if not o:
+        return ""
+    sp = ", ".join(f"{x['ma']} x{x['sl']}" for x in o["sp"])
+    return f"📦 Nhanh: đơn {NH.TEN_KENH.get(o['kenh'], o['kenh'])} {o['ma_san'] or o['id']} ({o['st_ten']}) — trong kiện phải có: <b>{esc(sp)}</b>"
 
 
 # ======================= thẻ ticket =======================
@@ -328,6 +350,8 @@ def card(r, rieng=False):
     L = [f"🎫 <b>{esc(r['ID'])}</b> · {esc(loai)}",
          (f"Kênh: {esc(r.get('Kênh'))} · " if r.get("Kênh") else "")
          + (f"Đơn: <code>{esc(r.get('Mã đơn'))}</code>" if r.get("Mã đơn") else "Đơn: (chưa rõ)")]
+    if rieng and r.get("STK hoàn"):
+        L.append(f"🏦 Hoàn vào: {esc(r.get('STK hoàn'))}")
     if rieng and (r.get("Tên KH") or r.get("SĐT KH") or r.get("Địa chỉ KH")):
         L.append(f"KH: {esc(r.get('Tên KH'))} · {esc(r.get('SĐT KH'))}\n{esc(r.get('Địa chỉ KH'))}")
     if r.get("SKU khách đang cầm") or r.get("SKU đổi sang"):
@@ -711,7 +735,8 @@ def bao_loi_kho(r):
 
 
 def bao_duyet(r, vi):
-    t = f"🧾 <b>Cần duyệt</b> · {esc(r['ID'])} ({esc(r.get('Loại'))})\n{esc(vi)}\n\n" + card(r)
+    t = f"🧾 <b>Cần duyệt</b> · {esc(r['ID'])} ({esc(r.get('Loại'))})\n{esc(vi)}\n\n" + card(r) + \
+        (f"\n🏦 Hoàn vào: {esc(r.get('STK hoàn'))}" if r.get("STK hoàn") else "")  # chỉ gửi riêng chủ shop
     b = [[{"text": "✅ Duyệt", "callback_data": f"tk:a:{r['ID']}:duyet"},
           {"text": "❌ Từ chối", "callback_data": f"tk:a:{r['ID']}:tuchoi"}]]
     for u in duyet_ids():
@@ -972,10 +997,14 @@ def cmd_hoan(m, arg):
                     except BaseException as e:
                         print("ticket: ảnh xem lỗi", e, flush=True)
             b = [[{"text": t, "callback_data": f"tk:t:{r['ID']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
-            return tsend(chat, card(r) + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b, reply_to=m["message_id"])
+            dn = don_nhanh(ma)
+            return tsend(chat, card(r) + (f"\n{dn}" if dn else "") + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b,
+                         reply_to=m["message_id"])
         row = log_hoan(ma, who, fid=fid)
         b = [[{"text": t, "callback_data": f"tk:h:{row['_id']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
-        return tsend(chat, f"📥 Đã ghi kiện hoàn <code>{esc(ma)}</code> (không thuộc ticket CS nào). Tình trạng?", b,
+        dn = don_nhanh(ma)
+        return tsend(chat, f"📥 Đã ghi kiện hoàn <code>{esc(ma)}</code> (không thuộc ticket CS nào)."
+                           + (f"\n{dn}" if dn else "\n(Nhanh chưa thấy mã này)") + "\nMở kiện kiểm, tình trạng?", b,
                      reply_to=m["message_id"])
     co_tk, le = [], 0
     for ma in mas:
@@ -1082,7 +1111,7 @@ def on_update(u):
         JOBS.put(u); return True
     if chat in (str(E.get("CHAT_ID", "")),) and lenh in ("/hoan", "/xem", "/dangdo") + tuple(EXT_CMDS):
         JOBS.put(u); return True
-    if chat == tchat() and lenh in EXT_CMDS:
+    if chat in (tchat(), str(E.get("CH_CHAT_ID", ""))) and lenh in EXT_CMDS:
         JOBS.put(u); return True
     return False
 
@@ -1158,6 +1187,14 @@ def handle(u):
     loai = lenh.lstrip("/")
     if loai in LOAI and loai != "hoan" and private:
         return wiz_start(uid, chat, loai, ten(m.get("from")))
+    if lenh == "/dangnhapnhanh":
+        if str(uid) not in duyet_ids():
+            return tsend(chat, "Chỉ chủ shop dùng lệnh này.")
+        import subprocess
+        subprocess.Popen([os.path.join(ROOT, ".venv", "bin", "python"), os.path.join(ROOT, "tools", "nhanh.py"), "login"],
+                         cwd=ROOT, stdout=open(os.path.join(ROOT, "logs", "nhanh-login.out"), "a"),
+                         stderr=subprocess.STDOUT, start_new_session=True)
+        return tsend(chat, "🔑 Đã mở cửa sổ Chrome riêng trên máy Mac: đăng nhập Nhanh.vn trong 15 phút, xong cửa sổ tự đóng.")
     if lenh in EXT_CMDS and not private:
         return EXT_CMDS[lenh](m, arg)
     if lenh == "/hoan":
