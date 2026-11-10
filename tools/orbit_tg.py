@@ -503,9 +503,11 @@ def save_file(blob, name):
 
 # ======================= nghe tin (listener) =======================
 
-def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset"):
+def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset", pre=None):
     """Long-polling Telegram. Lưu mọi tin; gọi on_job(job) khi tin gọi bot: tag @bot, trả lời tin của bot,
-    lệnh /..., hoặc nhắn riêng (chỉ người trong allow_users). Nhóm ngoài allow_chats: bỏ qua (trừ /chatid)."""
+    lệnh /..., hoặc nhắn riêng (chỉ người trong allow_users). Nhóm ngoài allow_chats: bỏ qua (trừ /chatid).
+    pre(update) -> True: update đã được module khác nhận (VD ticket.py: nút bấm, phiếu nhắn riêng), bỏ qua ở đây.
+    Bấm nút (callback_query) chỉ đi qua pre."""
     me = must(api("getMe"), "getMe")
     uname_ = "@" + me["username"].lower()
     stf = os.path.join(S["root"], "logs", state_name)
@@ -515,12 +517,16 @@ def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset"):
     print(f"Đang nghe Telegram {uname_} — nhóm: {', '.join(sorted(allow_chats)) or '(chưa có)'}", flush=True)
     while True:
         r = api("getUpdates", {"offset": off, "timeout": 50,
-                               "allowed_updates": ["message", "edited_message", "my_chat_member"]}, timeout=70)
+                               "allowed_updates": ["message", "edited_message", "my_chat_member", "callback_query"]},
+                timeout=70)
         if not r.get("ok"):
             print(time.strftime("%H:%M"), "Telegram lỗi:", r.get("description"), flush=True)
             time.sleep(10); continue
         for u in r["result"]:
             off = u["update_id"] + 1
+            if u.get("callback_query"):
+                _pre(pre, u)
+                continue
             m = u.get("message")
             if u.get("my_chat_member"):
                 c = u["my_chat_member"]["chat"]
@@ -540,6 +546,8 @@ def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset"):
             sender = str((m.get("from") or {}).get("id", ""))
             if (m.get("from") or {}).get("is_bot"):
                 continue
+            if _pre(pre, u):
+                continue
             if typ == "private":
                 if sender not in allow_users:
                     send(chat, "Bot này chỉ làm việc trong nhóm của The Orbit.", reply_to=m["message_id"]); continue
@@ -558,3 +566,13 @@ def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset"):
                     "album": bool(m.get("media_group_id")) or bool((m.get("reply_to_message") or {}).get("media_group_id"))})
         with open(stf, "w") as f:
             f.write(str(off))
+
+
+def _pre(pre, u):
+    if not pre:
+        return False
+    try:
+        return bool(pre(u))
+    except BaseException as e:  # lỗi module phụ không làm chết listener
+        print(time.strftime("%H:%M"), "pre lỗi:", repr(e), flush=True)
+        return False

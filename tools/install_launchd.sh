@@ -38,5 +38,21 @@ cat > "$NHAC" <<EOF
   <key>StandardErrorPath</key><string>$DIR/logs/nhac.out</string>
 </dict></plist>
 EOF
-for p in "$PLIST" "$NHAC"; do launchctl unload "$p" 2>/dev/null || true; launchctl load "$p"; done
-echo "Đã bật listener + cảnh báo 9h. Log: $DIR/logs/listener.out, $DIR/logs/nhac.out"
+# Ticket CS 9:05 sáng: quá hạn hoàn, chưa gọi, chờ duyệt, phạt kho; thứ 2 thêm báo cáo tuần (tools/ticket.py)
+TK=~/Library/LaunchAgents/vn.theorbit.kho-agent.ticket.plist
+cat > "$TK" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>vn.theorbit.kho-agent.ticket</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/bin/python3</string><string>$DIR/tools/ticket.py</string><string>nhac</string><string>--send</string>
+  </array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
+  <key>StandardOutPath</key><string>$DIR/logs/ticket-nhac.out</string>
+  <key>StandardErrorPath</key><string>$DIR/logs/ticket-nhac.out</string>
+</dict></plist>
+EOF
+for p in "$PLIST" "$NHAC" "$TK"; do launchctl unload "$p" 2>/dev/null || true; launchctl load "$p"; done
+echo "Đã bật listener + cảnh báo 9h + ticket 9:05. Log: $DIR/logs/listener.out, nhac.out, ticket-nhac.out"

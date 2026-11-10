@@ -13,6 +13,7 @@ import glob, json, os, queue, subprocess, sys, threading, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lark as L
 import orbit_tg as TG
+import ticket as TK  # ticket CS (đổi/trả/hoàn) — nút bấm + phiếu nhắn riêng, không gọi Claude
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 LOG = os.path.join(ROOT, "logs")
@@ -131,7 +132,8 @@ def main():
     threading.Thread(target=worker, daemon=True).start()
     if TG.tg_on():
         chats = [env.get("CHAT_ID")] + [v for k, v in env.items() if k.endswith("_CHAT_ID") and k != "SX_CHAT_ID" and not k.startswith("LARK_")]
-        TG.poll(on_tele, chats, allow_users=[OWNER]); return
+        TK.init(env)
+        TG.poll(on_tele, chats, allow_users=[OWNER], pre=TK.on_update); return
     import lark_oapi as lark
     from lark_oapi.api.im.v1 import P2ImMessageReceiveV1  # noqa: F401
     h = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(on_message).build()
