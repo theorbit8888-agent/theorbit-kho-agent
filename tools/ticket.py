@@ -90,8 +90,14 @@ LENH = ("/tk", "/ticket", "/doi", "/doitruoc", "/tra", "/doihoan", "/suco", "/ho
 
 E = {}
 ME = {}
+EXT_CMDS = {}   # lệnh -> fn(m, arg)        (kho_flow.py đăng ký: /hangve /chotdi /chothoan /kiemkho /kho)
+EXT_CB = {}     # tiền tố callback -> fn(cq, parts)
+EXT_REPLY = {}  # loại câu hỏi chờ trả lời -> fn(m, p)
+HOAN = "09 · HÀNG HOÀN NHẬN"
+HOAN_COLS = ["Ngày", "MVĐ", "Ticket", "Tình trạng", "Người nhận", "Ảnh", "Ảnh (xem)", "Sàn báo hoàn", "Ghi chú"]
 WIZ = {}    # uid -> phiếu đang hỏi
 PEND = {}   # "chat:mid" của tin bot hỏi -> {id, f, u}
+STATE_KF = {}  # kho_flow: đợt hàng về -> id các dòng 03
 JOBS = queue.Queue()
 _MEM = {}   # uid -> (lúc, là thành viên?)
 _LOCK = threading.Lock()
@@ -105,6 +111,7 @@ def init(env, start_worker=True):
     try:
         st = json.load(open(STATE))
         WIZ.update({int(k): v for k, v in st.get("wiz", {}).items()}); PEND.update(st.get("pend", {}))
+        STATE_KF.update(st.get("kf", {}))
     except Exception:
         pass
     if start_worker:
@@ -115,7 +122,9 @@ def _save():
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     keep = dict(list(PEND.items())[-300:])
     PEND.clear(); PEND.update(keep)
-    json.dump({"wiz": WIZ, "pend": PEND}, open(STATE, "w"), ensure_ascii=False)
+    kf = dict(list(STATE_KF.items())[-200:])
+    STATE_KF.clear(); STATE_KF.update(kf)
+    json.dump({"wiz": WIZ, "pend": PEND, "kf": STATE_KF}, open(STATE, "w"), ensure_ascii=False)
 
 
 def tchat():
@@ -179,21 +188,23 @@ def is_member(uid):
     uid = str(uid)
     if uid in duyet_ids():
         return True
-    if not tchat():
-        return False
     hit = _MEM.get(uid)
     if hit and time.time() - hit[0] < 600:
         return hit[1]
-    r = TG.api("getChatMember", {"chat_id": tchat(), "user_id": int(uid)})
-    ok = r.get("ok") and r["result"]["status"] in ("creator", "administrator", "member", "restricted")
-    _MEM[uid] = (time.time(), bool(ok))
-    return bool(ok)
+    ok = False
+    for c in (tchat(), str(E.get("CHAT_ID") or "")):
+        if c:
+            r = TG.api("getChatMember", {"chat_id": c, "user_id": int(uid)})
+            if r.get("ok") and r["result"]["status"] in ("creator", "administrator", "member", "restricted"):
+                ok = True; break
+    _MEM[uid] = (time.time(), ok)
+    return ok
 
 
 # ======================= Sheet =======================
 
 def setup():
-    TG.kho("setup", tables={TG.sname(BANG): COLS})
+    TG.kho("setup", tables={TG.sname(BANG): COLS, TG.sname(HOAN): HOAN_COLS})
 
 
 def all_rows(fresh=True):
@@ -839,6 +850,9 @@ def prompt(chat, reply_to, tid, f, u, text):
 
 
 def on_prompt_reply(m, p):
+    if p.get("f") in EXT_REPLY:
+        PEND.pop(f"{m['chat']['id']}:{m['reply_to_message']['message_id']}", None); _save()
+        return EXT_REPLY[p["f"]](m, p)
     u = m.get("from") or {}
     who = ten(u)
     chat = m["chat"]["id"]
@@ -909,35 +923,102 @@ def menu(chat, private):
                 "Kho nhận hàng hoàn: <code>/hoan MVĐ</code> · Xem: <code>/xem mã</code> · Đang dở: /dangdo", b)
 
 
+def ma_list(text):
+    return [t for t in re.split(r"[\s,;]+", text) if len(t) >= 6 and re.fullmatch(r"[#A-Za-z0-9\-]+", t)]
+
+
+def log_hoan(ma, who, ticket="", tt="", fid=""):
+    """Ghi 1 kiện hoàn vào bảng 09 (đã có dòng 'sàn báo hoàn' cho MVĐ này thì cập nhật dòng đó)."""
+    for r in TG.rows(HOAN, fresh=True):
+        if str(r.get("MVĐ", "")).lower() == ma.lower() and not r.get("Người nhận"):
+            f = {"Ngày": today(), "Người nhận": who, "Ticket": ticket, "Tình trạng": tt or "✅ Nguyên vẹn",
+                 "Ảnh": "tg:" + fid if fid else ""}
+            TG.kho("update", table=TG.sname(HOAN), id=r["_id"], fields=f)
+            TG._CACHE.pop(TG.sname(HOAN), None)
+            return dict(r, **f)
+    row = {"Ngày": today(), "MVĐ": ma, "Ticket": ticket, "Tình trạng": tt or "✅ Nguyên vẹn", "Người nhận": who,
+           "Ảnh": "tg:" + fid if fid else ""}
+    row["_id"] = TG.kho("add", table=TG.sname(HOAN), rows=[row])[0]
+    TG._CACHE.pop(TG.sname(HOAN), None)
+    if fid:
+        try:
+            TG.xem_anh(HOAN, row["_id"], "Ảnh", TG.download(fid))
+        except BaseException as e:
+            print("ticket: ảnh xem lỗi", e, flush=True)
+    return row
+
+
 def cmd_hoan(m, arg):
+    """Kho nhận kiện hoàn. 1 mã: chọn tình trạng. Nhiều mã (mỗi dòng 1 MVĐ): ghi hết là nguyên vẹn,
+    kiện nào thuộc ticket CS thì hỏi tình trạng riêng."""
     chat, u = m["chat"]["id"], m.get("from") or {}
-    if not arg:
-        return tsend(chat, "Gõ <code>/hoan MVĐ</code> (hoặc mã đơn / ID ticket).", reply_to=m["message_id"])
-    rs = find(arg, open_only=True)
-    if not rs:
-        with _LOCK:
-            tid = new_id("HHV")
-            row = {"ID": tid, "Loại": LOAI["hoan"][1], "Trạng thái": "Chờ CS gắn đơn", "MVĐ hoàn về": arg,
-                   "Ngày tạo": datetime.now().strftime("%Y-%m-%d %H:%M"), "Người tạo": ten(u),
-                   "Lịch sử": f"{now()} {ten(u)}: kho báo hàng hoàn, chưa có ticket"}
-            row["_id"] = TG.kho("add", table=TG.sname(BANG), rows=[row])[0]
-            TG._CACHE.pop(TG.sname(BANG), None)
-        rs = [row]
-        tsend(chat, f"Không thấy ticket nào có mã <code>{esc(arg)}</code> → mở <b>{tid}</b> để CS gắn đơn sau.",
-              reply_to=m["message_id"])
-        refresh(row)
-    r = rs[0]
-    if m.get("photo"):  # chụp kiện, chú thích "/hoan MVĐ" → lưu ảnh luôn
-        fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"]
-        old = str(r.get("Ảnh hàng hoàn") or "")
-        upd(r, {"Ảnh hàng hoàn": (old + ", " if old else "") + "tg:" + fid}, "ảnh hàng hoàn", ten(u))
-        if not old:
-            try:
-                TG.xem_anh(BANG, r["_id"], "Ảnh hàng hoàn", TG.download(fid))
-            except BaseException as e:
-                print("ticket: ảnh xem lỗi", e, flush=True)
-    b = [[{"text": t, "callback_data": f"tk:t:{r['ID']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
-    tsend(chat, card(r) + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b, reply_to=m["message_id"])
+    who = ten(u)
+    mas = ma_list(arg)
+    if not mas:
+        return tsend(chat, "Gõ <code>/hoan MVĐ</code> (nhiều kiện: mỗi dòng 1 MVĐ). Chụp kiện thì để lệnh ở chú thích ảnh.",
+                     reply_to=m["message_id"])
+    fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"] if m.get("photo") else ""
+    if len(mas) == 1:
+        ma = mas[0]
+        rs = find(ma, open_only=True)
+        if rs:
+            r = rs[0]
+            if fid:
+                old = str(r.get("Ảnh hàng hoàn") or "")
+                upd(r, {"Ảnh hàng hoàn": (old + ", " if old else "") + "tg:" + fid}, "ảnh hàng hoàn", who)
+                if not old:
+                    try:
+                        TG.xem_anh(BANG, r["_id"], "Ảnh hàng hoàn", TG.download(fid))
+                    except BaseException as e:
+                        print("ticket: ảnh xem lỗi", e, flush=True)
+            b = [[{"text": t, "callback_data": f"tk:t:{r['ID']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
+            return tsend(chat, card(r) + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b, reply_to=m["message_id"])
+        row = log_hoan(ma, who, fid=fid)
+        b = [[{"text": t, "callback_data": f"tk:h:{row['_id']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
+        return tsend(chat, f"📥 Đã ghi kiện hoàn <code>{esc(ma)}</code> (không thuộc ticket CS nào). Tình trạng?", b,
+                     reply_to=m["message_id"])
+    co_tk, le = [], 0
+    for ma in mas:
+        rs = find(ma, open_only=True)
+        if rs:
+            co_tk.append(rs[0])
+        else:
+            log_hoan(ma, who); le += 1
+    tsend(chat, f"📥 Đã ghi <b>{len(mas)}</b> kiện hoàn: {le} kiện thường (mặc định nguyên vẹn — kiện nào lỗi gõ "
+                f"<code>/hoan MVĐ</code> riêng)" + (f", {len(co_tk)} kiện thuộc ticket CS ↓" if co_tk else "."),
+          reply_to=m["message_id"])
+    for r in co_tk:
+        b = [[{"text": t, "callback_data": f"tk:t:{r['ID']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
+        tsend(chat, card(r) + "\n\n📥 Tình trạng?", b)
+
+
+def hoan_le(cq, rid, k):
+    """Kho chọn tình trạng cho kiện hoàn không thuộc ticket. Xấu → mở HHV cho CS xử lý với sàn."""
+    u = cq["from"]
+    who = ten(u)
+    if not is_member(u["id"]):
+        return answer(cq, "Bạn chưa ở nhóm kho / đổi trả", True)
+    v = TINH_TRANG[int(k)]
+    answer(cq, v)
+    TG.kho("update", table=TG.sname(HOAN), id=rid, fields={"Tình trạng": v})
+    TG._CACHE.pop(TG.sname(HOAN), None)
+    r9 = next((r for r in TG.rows(HOAN, fresh=True) if r["_id"] == rid), {})
+    chat, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
+    if v not in XAU:
+        return tedit(chat, mid, f"📥 <code>{esc(r9.get('MVĐ'))}</code>: {esc(v)} — {esc(who)}")
+    with _LOCK:
+        tid = new_id("HHV")
+        row = {"ID": tid, "Loại": LOAI["hoan"][1], "Trạng thái": "Chờ CS gắn đơn", "MVĐ hoàn về": r9.get("MVĐ", ""),
+               "Ngày tạo": datetime.now().strftime("%Y-%m-%d %H:%M"), "Người tạo": who, "Tình trạng hàng hoàn": v,
+               "Ngày hàng hoàn về": today(), "Người nhận hoàn": who, "Cần duyệt": "✓",
+               "Ảnh hàng hoàn": r9.get("Ảnh", ""), "Lịch sử": f"{now()} {who}: kho nhận kiện hoàn {v}, chưa rõ đơn"}
+        row["_id"] = TG.kho("add", table=TG.sname(BANG), rows=[row])[0]
+        TG._CACHE.pop(TG.sname(BANG), None)
+    TG.kho("update", table=TG.sname(HOAN), id=rid, fields={"Ticket": tid})
+    tedit(chat, mid, f"📥 <code>{esc(r9.get('MVĐ'))}</code>: {esc(v)} — {esc(who)} → mở <b>{tid}</b> cho CS")
+    refresh(row, f"📥 Kho nhận kiện hoàn <b>{esc(v)}</b>, chưa rõ đơn → CS gắn đơn và xử lý với sàn", True)
+    for u2 in duyet_ids():
+        tsend(u2, f"⚠️ <b>Hàng hoàn {esc(v)}</b> (chưa rõ đơn)\n\n" + card(row))
 
 
 def cmd_xem(m, arg, private):
@@ -980,7 +1061,7 @@ def on_update(u):
         return False
     cq = u.get("callback_query")
     if cq:
-        if str(cq.get("data", "")).startswith("tk:"):
+        if str(cq.get("data", "")).split(":")[0] in ("tk",) + tuple(EXT_CB):
             JOBS.put(u); return True
         return False
     m = u.get("message") or {}
@@ -999,7 +1080,9 @@ def on_update(u):
         return False
     if chat == tchat() and lenh in LENH:
         JOBS.put(u); return True
-    if chat in (str(E.get("CHAT_ID", "")),) and lenh in ("/hoan", "/xem", "/dangdo"):
+    if chat in (str(E.get("CHAT_ID", "")),) and lenh in ("/hoan", "/xem", "/dangdo") + tuple(EXT_CMDS):
+        JOBS.put(u); return True
+    if chat == tchat() and lenh in EXT_CMDS:
         JOBS.put(u); return True
     return False
 
@@ -1024,6 +1107,8 @@ def handle(u):
     if cq:
         p = cq["data"].split(":")
         uid = cq["from"]["id"]
+        if p[0] in EXT_CB:
+            return EXT_CB[p[0]](cq, p)
         if p[1] == "w":
             answer(cq)
             TG.api("editMessageReplyMarkup", {"chat_id": cq["message"]["chat"]["id"],
@@ -1041,6 +1126,8 @@ def handle(u):
             return act(cq, p[2], p[3])
         if p[1] == "t":
             return tinh_trang(cq, p[2], p[3])
+        if p[1] == "h":
+            return hoan_le(cq, p[2], p[3])
         return answer(cq)
     m = u["message"]
     chat, typ = m["chat"]["id"], m["chat"]["type"]
@@ -1071,6 +1158,8 @@ def handle(u):
     loai = lenh.lstrip("/")
     if loai in LOAI and loai != "hoan" and private:
         return wiz_start(uid, chat, loai, ten(m.get("from")))
+    if lenh in EXT_CMDS and not private:
+        return EXT_CMDS[lenh](m, arg)
     if lenh == "/hoan":
         return cmd_hoan(m, arg)
     if lenh == "/xem":

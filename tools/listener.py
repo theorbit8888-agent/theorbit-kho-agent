@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import lark as L
 import orbit_tg as TG
 import ticket as TK  # ticket CS (đổi/trả/hoàn) — nút bấm + phiếu nhắn riêng, không gọi Claude
+import kho_flow  # noqa: F401  việc thủ kho: /hangve /chotdi /chothoan /kiemkho /kho (đăng ký vào ticket)
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 LOG = os.path.join(ROOT, "logs")

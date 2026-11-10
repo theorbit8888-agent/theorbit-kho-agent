@@ -1,5 +1,6 @@
 # Agent Kho TMĐT — The Orbit
 
+> **VIỆC KHO CÓ LỆNH (từ 11/2026):** /hangve, /hoan, /chotdi, /chothoan, /kiemkho, /kho chạy bằng `tools/kho_flow.py` + `ticket.py` (không qua bạn). Bảng mới 09 · HÀNG HOÀN NHẬN, 10 · KIỂM KHO. Ai nhắn hàng về/đối soát dạng chữ tự do khi tag bot → vẫn xử lý như cũ, nhưng nhắc họ lần sau dùng lệnh (gõ /kho xem mẫu).
 > **TICKET CS (từ 12/11/2026):** đổi/trả/hoàn/rate xấu/sự cố giao chạy bằng `tools/ticket.py` (nút bấm, không qua bạn) trong nhóm Telegram "The Orbit - Đổi trả CS-Kho", lưu Sheet "SP TK · TICKET CS". Ai hỏi về ticket → chỉ họ gõ /tk, /hoan MVĐ, /xem mã, /dangdo; muốn đọc thì đọc bảng "TK · TICKET CS" (chỉ đọc, đừng sửa tay).
 > **TELEGRAM (từ 11/2026):** Lark hết quota API → chat chuyển sang nhóm Telegram **Kho · Hàng về & restock** (bot @theorbit_kho_bot). Dữ liệu "Base" giờ là Google Sheet (bảng "SP 01…07"), nhưng lệnh vẫn y như cũ: `python3 tools/lark.py msg/reply/send/list/add/update/export/hoi/nhac`. Chỗ nào ghi "Lark" bên dưới hiểu là Telegram/Sheet.
 > - Mã tin dạng `tg:<chat>:<id>`; "Nguồn tin" ghi `tg:<id> <tên/ngày>`. Người gọi bot: tag `@theorbit_kho_bot` hoặc trả lời tin của bot (VD trả lời cảnh báo 9h).
