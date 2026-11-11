@@ -1,0 +1,81 @@
+# KỊCH BẢN ĐẦY ĐỦ — chạy qua mọi luồng bot kho. python3 tools/san_thu.py --reset && python3 tools/san_thu.py kich-ban/day-du.txt
+# ===== NHÓM KHO =====
+la kho
+kho: /kho
+kho: /hangve\
+NCC: Xưởng A\
+Kho: Q2\
+(SKU | bill | thực tế | lỗi)\
+SO-A4-RIVET-S 20 18 1\
+SO-A4-RIVET-M 10 10 0\
+dòng rác không đọc được
+bam 1
+kho: /hangve
+kho: /hoan SPXVN0001
+kho: /hoan SPXVN0002\
+SPXVN0003
+kho: /chotdi\
+TikTok 50 48 47 2\
+Shopee 30 30 30 0
+kho: /chotdi 47 30
+kho: /chothoan\
+SPXVN0001\
+SPXVN0009
+kho: /chothoan
+kho: /kiemkho\
+SO-A4-RIVET-S 12 10\
+SO-A4-RIVET-M 5 5
+bam 1
+kho: /kiemkho
+kho: /nhanh SO-A4-RIVET-S
+kho: /nhanh
+kho: /hoatoc 876897256 khách cần trước 18h
+bam 1
+bam 2
+kho: /note 876897256 đổi size L
+bam 1
+kho: /lenhkhongco
+kho: tin thường không phải lệnh
+# ===== NHÓM ĐỔI TRẢ: ticket đổi hàng =====
+la cs
+doitra: /tk
+bam 1
+rieng: Mã đơn: 876897256\
+Tên KH: Test\
+SĐT: 0900000000\
+Địa chỉ: 1 Lê Lợi Q1\
+SKU: SO-A4-RIVET-S → L\
+Bù thêm: 0
+bam 1
+bam 1
+anh
+bam 1
+bam 1
+doitra: /dangdo
+doitra: /xem 876897256
+# người lạ
+la la
+rieng: /tk
+doitra: /moca 1tr
+# ===== CS & CỬA HÀNG =====
+la cs
+ch: /moca 4tr072k
+ch: /chi 35k ship grab
+ch: /thu 200k bán lẻ
+ch: /ket
+ch: /ketca\
+Két đếm: 4.200.000\
+Thu tiền mặt: 200k\
+Thu CK: 1tr\
+Thu thẻ: 0
+anh /bill 876897256 300k bù đổi hàng
+ch: /bill
+ch: /billthieu
+ch: /goi 876897256 gói kèm túi
+bam 3
+ch: /chotca
+bam 1
+bam 2
+ch: /moca
+ch: /chi
+xem

@@ -606,6 +606,7 @@ def san_bao(d, send=False, luon=False):
 
 TK.EXT_CMDS.update({"/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
                     "/nhanh": nhanh_tt})
+TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/hangve", "/chotdi", "/chothoan", "/kiemkho")})
 TK.EXT_CB["kf"] = on_cb
 TK.EXT_REPLY.update({"kf_nhanh": on_reply, "kf_lechdi": on_reply})
 if not hasattr(TK, "STATE_KF"):

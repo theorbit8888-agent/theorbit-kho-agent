@@ -133,12 +133,14 @@ def chi(m, arg, loai="Chi"):
     p = arg.split(maxsplit=1)
     n = so(p[0]) if p else None
     if n is None or len(p) < 2:
-        return tsend(c, f"Gõ <code>/{'chi' if loai == 'Chi' else 'thu'} 35k ship grab đơn 876897256</code>",
+        return tsend(c, f"Gõ <code>/chi 35k ship grab đơn 876897256</code>" if loai == "Chi" else
+                     "Gõ <code>/thu 25k khách trả tiền ship</code> — chỉ tiền mặt <b>ngoài bán hàng</b> "
+                     "(tiền bán hàng ghi 1 lần ở /ketca).",
                      reply_to=m["message_id"])
     add(KET, {"Ngày": ngay(), "Giờ": now().strftime("%H:%M"), "Loại": loai, "Người": who, "Số tiền": n,
               "Nội dung": p[1], "Loại chi": loai_chi(p[1]) if loai == "Chi" else ""})
     phai, _, _, _ = ket_phai_co()
-    tsend(c, f"{'🔻 Chi' if loai == 'Chi' else '🔺 Thu'} {tien(n)} — {esc(p[1])}"
+    tsend(c, f"{'🔻 Chi' if loai == 'Chi' else '🔺 Thu ngoài bán hàng'} {tien(n)} — {esc(p[1])}"
              + (f" <i>({loai_chi(p[1])})</i>" if loai == "Chi" else "") + f"\nKét phải có: <b>{tien(phai)}</b>",
           reply_to=m["message_id"])
 
@@ -238,6 +240,11 @@ def gui_so_ck(send=True):
 
 
 def billthieu(m, arg):
+    if str((m.get("from") or {}).get("id")) not in TK.duyet_ids():
+        return tsend(m["chat"]["id"], "Lệnh này của chủ shop (đánh dấu CK chưa nhận được).", reply_to=m["message_id"])
+    if not arg.strip():
+        return tsend(m["chat"]["id"], "Gõ <code>/billthieu mã đơn</code> để đánh dấu chuyển khoản chưa nhận.",
+                     reply_to=m["message_id"])
     for r in rows(CK):
         if str(r.get("Mã đơn", "")).lower() == arg.strip().lower() and not r.get("Chủ shop xác nhận"):
             TG.kho("update", table=TG.sname(CK), id=r["_id"], fields={"Chủ shop xác nhận": "❌ Chưa nhận"})
@@ -269,8 +276,8 @@ def the_viec(r):
         L.append(f"📝 {esc(r.get('Nội dung'))}")
     if r.get("Nhanh"):
         L.append(r["Nhanh"])
-    L.append(f"➡️ <b>{esc(r.get('Trạng thái'))}</b> · {esc(r.get('Người giao'))} {esc(str(r.get('Lúc giao'))[11:16])}"
-             + (f" · {esc(r.get('Người làm'))} {esc(str(r.get('Lúc xong'))[11:16])}" if r.get("Người làm") else ""))
+    L.append(f"➡️ <b>{esc(r.get('Trạng thái'))}</b> · giao: {esc(r.get('Người giao'))} {esc(str(r.get('Lúc giao'))[11:16])}"
+             + (f" · làm: {esc(r.get('Người làm'))} {esc(str(r.get('Lúc xong'))[11:16])}" if r.get("Người làm") else ""))
     return "\n".join(L)
 
 
@@ -462,6 +469,9 @@ TK.EXT_CMDS.update({"/moca": moca, "/chi": chi, "/thu": thu, "/ketca": ketca, "/
                     "/billthieu": billthieu, "/goi": lambda m, a: giao_viec(m, a, "/goi"),
                     "/note": lambda m, a: giao_viec(m, a, "/note"), "/hoatoc": lambda m, a: giao_viec(m, a, "/hoatoc"),
                     "/chotca": chotca})
+TK.EXT_NHOM.update({k: ("CH_CHAT_ID",) for k in ("/moca", "/chi", "/thu", "/ketca", "/ket", "/bill", "/billthieu",
+                                                   "/goi", "/chotca")})
+TK.EXT_NHOM.update({k: ("CHAT_ID", "TICKET_CHAT_ID", "CH_CHAT_ID") for k in ("/note", "/hoatoc")})
 TK.EXT_CB["ch"] = on_cb
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ Không gửi tin thật, không đụng dữ liệu thật. Dành cho team góp 
   python3 tools/san_thu.py                 # gõ tay từng dòng (xem HUONG DAN ở dưới)
   python3 tools/san_thu.py kich-ban.txt    # chạy 1 file kịch bản (mỗi dòng 1 lệnh như gõ tay)
   python3 tools/san_thu.py --reset         # xoá dữ liệu sân thử, làm lại từ đầu
+  thêm --co-nhanh: dùng dữ liệu Nhanh đã đồng bộ trên máy (logs/nhanh/, chỉ máy chủ shop có)
 
 HƯỚNG DẪN (mỗi dòng):
   kho: /hangve ...        gửi tin vào nhóm Kho          (nhóm: kho | doitra | ch | rieng)
@@ -21,7 +22,7 @@ HƯỚNG DẪN (mỗi dòng):
   # ...                   ghi chú, bỏ qua
 Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng sau.
 """
-import json, os, sys, time
+import html, json, os, re, sys, time
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 SAN = os.path.join(ROOT, "logs", "san-thu")
@@ -102,7 +103,9 @@ CUOI = {"nut": None, "hoi": {}}
 def _in_tin(method, b, mid):
     SO[0] += 1
     nut = [(x["text"], x.get("callback_data") or x.get("url")) for row in (b.get("reply_markup") or {}).get("inline_keyboard", []) for x in row]
-    TIN[SO[0]] = {"chat": b["chat_id"], "mid": mid, "text": b.get("text", ""), "nut": nut}
+    # như Telegram thật: tin trả về trong nút bấm là chữ trơn (bỏ thẻ HTML, giải mã &lt; &amp;)
+    tron = html.unescape(re.sub(r"<[^>]+>", "", b.get("text", "")))
+    TIN[SO[0]] = {"chat": b["chat_id"], "mid": mid, "text": tron, "nut": nut}
     noi = TEN_NHOM.get(int(b["chat_id"])) if str(b["chat_id"]).lstrip("-").isdigit() else None
     noi = f"nhóm {noi}" if noi else f"riêng → {TEN.get(int(b['chat_id']), b['chat_id'])}"
     sua = " (sửa tin)" if method == "editMessageText" else ""
@@ -157,6 +160,19 @@ import ticket as TK  # noqa: E402
 import kho_flow  # noqa: E402,F401
 import cua_hang  # noqa: E402,F401
 
+import nhanh as NH  # noqa: E402
+import types  # noqa: E402
+# chặn mọi việc chạy ngoài (xuất Sheet thật, mở Chrome Nhanh, nhắn chủ shop thật qua bot thật)
+_sp = types.SimpleNamespace(run=lambda *a, **k: print("   (sân thử: bỏ qua lệnh chạy ngoài)"),
+                            Popen=lambda *a, **k: print("   (sân thử: bỏ qua mở Chrome Nhanh)"),
+                            STDOUT=None, PIPE=None)
+kho_flow.subprocess = _sp
+TK.__dict__["subprocess"] = _sp
+import subprocess as _real_sp  # noqa: E402
+_real_sp.Popen = _sp.Popen
+NH.bao_loi = lambda *a, **k: print("   (sân thử: Nhanh lỗi — bỏ qua báo chủ shop)")
+if "--co-nhanh" not in sys.argv:   # mặc định không dùng dữ liệu Nhanh trên máy (máy team không có)
+    NH.CACHE = os.path.join(SAN, "nhanh")
 TK.STATE = os.path.join(SAN, "ticket_state.json")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN

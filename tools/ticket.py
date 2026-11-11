@@ -94,6 +94,18 @@ ME = {}
 EXT_CMDS = {}   # lệnh -> fn(m, arg)        (kho_flow.py đăng ký: /hangve /chotdi /chothoan /kiemkho /kho)
 EXT_CB = {}     # tiền tố callback -> fn(cq, parts)
 EXT_REPLY = {}  # loại câu hỏi chờ trả lời -> fn(m, p)
+EXT_NHOM = {}   # lệnh -> các biến env nhóm được dùng (vd ("CH_CHAT_ID",)); không khai = mọi nhóm của bot
+TEN_NHOM = {"CHAT_ID": "Kho hàng về & restock", "TICKET_CHAT_ID": "Đổi trả CS-Kho", "CH_CHAT_ID": "CS & Cửa hàng"}
+
+
+def nhom_ok(lenh, chat):
+    """None = được dùng ở nhóm này; ngược lại trả câu nhắc đúng nhóm."""
+    keys = EXT_NHOM.get(lenh)
+    if not keys:
+        return None
+    if str(chat) in {str(E.get(k) or "") for k in keys}:
+        return None
+    return f"Lệnh {lenh} dùng trong nhóm " + " / ".join(f"<b>{TEN_NHOM.get(k, k)}</b>" for k in keys) + "."
 HOAN = "09 · HÀNG HOÀN NHẬN"
 HOAN_COLS = ["Ngày", "MVĐ", "Ticket", "Tình trạng", "Người nhận", "Ảnh", "Ảnh (xem)", "Sàn báo hoàn", "Ghi chú"]
 WIZ = {}    # uid -> phiếu đang hỏi
@@ -1196,6 +1208,9 @@ def handle(u):
                          stderr=subprocess.STDOUT, start_new_session=True)
         return tsend(chat, "🔑 Đã mở cửa sổ Chrome riêng trên máy Mac: đăng nhập Nhanh.vn trong 15 phút, xong cửa sổ tự đóng.")
     if lenh in EXT_CMDS and not private:
+        sai = nhom_ok(lenh, chat)
+        if sai:
+            return tsend(chat, sai, reply_to=m["message_id"])
         return EXT_CMDS[lenh](m, arg)
     if lenh == "/hoan":
         return cmd_hoan(m, arg)
