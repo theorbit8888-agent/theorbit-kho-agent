@@ -106,6 +106,10 @@ def _in_tin(method, b, mid):
     nut = [(x["text"], x.get("callback_data") or x.get("url")) for row in (b.get("reply_markup") or {}).get("inline_keyboard", []) for x in row]
     # như Telegram thật: tin trả về trong nút bấm là chữ trơn (bỏ thẻ HTML, giải mã &lt; &amp;)
     tron = html.unescape(re.sub(r"<[^>]+>", "", b.get("text", "")))
+    if method.startswith("edit"):   # tin bị sửa: bản cũ không còn nút
+        for t in TIN.values():
+            if t["mid"] == mid and str(t["chat"]) == str(b["chat_id"]):
+                t["nut"] = []
     TIN[SO[0]] = {"chat": b["chat_id"], "mid": mid, "text": tron, "nut": nut}
     noi = TEN_NHOM.get(int(b["chat_id"])) if str(b["chat_id"]).lstrip("-").isdigit() else None
     noi = f"nhóm {noi}" if noi else f"riêng → {TEN.get(int(b['chat_id']), b['chat_id'])}"
@@ -137,7 +141,12 @@ def fake_api(method, body=None, timeout=70, files=None):
         return {"ok": True, "result": {"message_id": mid, "chat": {"id": b["chat_id"], "type": "group"},
                                         "date": int(time.time()), "text": b.get("text", "")}}
     if method == "editMessageReplyMarkup":
-        if not (b.get("reply_markup") or {}).get("inline_keyboard"):
+        kb = (b.get("reply_markup") or {}).get("inline_keyboard")
+        for t in TIN.values():   # như Telegram: tin bị gỡ nút thì không bấm được nữa
+            if t["mid"] == b.get("message_id") and str(t["chat"]) == str(b.get("chat_id")):
+                t["nut"] = [(x["text"], x.get("callback_data") or x.get("url")) for row in (kb or []) for x in row]
+        if not kb:
+            CUOI["nut"] = max((k for k, t in TIN.items() if t["nut"]), default=None)
             print(f"   (bot gỡ nút của tin {b.get('message_id')})")
         return {"ok": True, "result": True}
     if method == "answerCallbackQuery":

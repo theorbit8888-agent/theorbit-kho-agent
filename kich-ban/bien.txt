@@ -1,0 +1,46 @@
+# TRƯỜNG HỢP BIÊN + vòng đời ticket đổi hàng đầy đủ
+# --- lệnh sai nhóm / người lạ / sai cú pháp ---
+la kho
+kho: /moca 2tr
+ch: /hangve rivet
+la la
+ch: /chi 20k nước
+rieng: /day
+la cs
+ch: /goi
+ch: /bill 300k
+ch: /ketca
+doitra: /xem
+doitra: /hoan
+kho: /kiemkho 1 2
+anh /hoan
+# --- vòng đời ticket DHS: mở → gọi khách + MVĐ → hàng hoàn về → nhập kho → đóng ---
+doitra: /tk
+bam 1
+rieng: Mã đơn: 586952630010872982\
+Tên KH: Test\
+SĐT: 0900000000\
+Địa chỉ: 1 Lê Lợi Q1\
+SKU: SO-A4-RIVET-S → M\
+Bù thêm: 0
+bam 5
+bam 2
+bam 1
+rieng: Mã đơn: 586952630010872982\
+Tên KH: Test\
+SĐT: 0900000000\
+Địa chỉ: 1 Lê Lợi Q1\
+SKU: SO-A4-RIVET-S → M\
+Bù thêm: 0
+bam 5
+bam 1
+bam 1
+tra SPXVN0999888777 SPXVN0999888778
+doitra: /dangdo
+la kho
+kho: /hoan SPXVN0999888778
+bam 1
+bam 1
+la cs
+doitra: /xem 586952630010872982
+doitra: /xem

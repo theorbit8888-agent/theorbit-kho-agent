@@ -634,6 +634,8 @@ def wiz_choice(uid, key, val, by=None):
         WIZ.pop(uid, None); _save()
         return tsend(w["chat"], "Đã huỷ.")
     if val == "tao":
+        if buoc(w) is not None:   # nút "Tạo" của phiếu cũ (đã Làm lại / chưa điền đủ) → không tạo ticket rỗng
+            return tsend(w["chat"], "Phiếu đã làm lại / chưa đủ thông tin — điền tiếp phiếu mới nhé.")
         return create(uid)
     if val == "lam_lai":
         return wiz_start(uid, w["chat"], w["loai"], w["by"])
@@ -1113,6 +1115,8 @@ def hoan_le(cq, rid, k):
 
 def cmd_xem(m, arg, private):
     chat = m["chat"]["id"]
+    if not arg.strip():
+        return tsend(chat, "Gõ <code>/xem mã</code> (mã ticket, mã đơn hoặc MVĐ). Ticket đang dở: /dangdo", reply_to=m["message_id"])
     rs = find(arg)
     if not rs:
         return tsend(chat, f"Không thấy ticket <code>{esc(arg)}</code>.", reply_to=m["message_id"])
