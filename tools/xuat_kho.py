@@ -442,7 +442,7 @@ def so_san(d):
         tong = d.get("tong_" + k) or 0
         if tong > len(ds) + 2:
             L.append(f"\n⚠️ {SAN_KENH[k]}: chỉ đọc được {len(ds)}/{tong} đơn trên sàn — kết quả dưới có thể thiếu")
-        L.append(f"\n{'✅' if ok else '⚠️'} <b>{SAN_KENH[k]}</b>: sàn cần gửi <b>{len(ds)}</b> · Nhanh chờ gửi <b>{len(nh_cho)}</b>"
+        L.append(f"\n{'✅' if ok and not du else '⚠️'} <b>{SAN_KENH[k]}</b>: sàn cần gửi <b>{len(ds)}</b> · Nhanh chờ gửi <b>{len(nh_cho)}</b>"
                  + (f" · 🔥 hoả tốc {len(gap)}" if gap else ""))
         if thieu:
             L.append(f"   🔗 <b>Nhanh thiếu {len(thieu)} đơn</b> (chưa đồng bộ → tồn Nhanh chưa trừ, nguy cơ bán vượt): "
