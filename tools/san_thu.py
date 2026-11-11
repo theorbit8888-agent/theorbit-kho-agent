@@ -209,6 +209,7 @@ TK.STATE = os.path.join(SAN, "ticket_state.json")
 kho_flow.DH_STATE = os.path.join(SAN, "dat_hang.json")   # quyết định đặt hàng thử, không đụng file thật
 import xuat_kho  # noqa: E402
 xuat_kho.STATE = os.path.join(SAN, "xuat_kho.json")
+xuat_kho.SAN_DIR = os.path.join(SAN, "san")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN
 
