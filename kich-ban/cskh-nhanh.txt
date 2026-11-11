@@ -1,0 +1,23 @@
+# Nút "Mở ticket" từ tin ca CSKH (mã đơn điền sẵn) + hoàn tiền phải có ảnh bill
+la cs
+rieng: /start tkm_2611110U70A80R
+bam 3
+rieng: Mã đơn: 2611110U70A80R\
+Tên KH: Test\
+SĐT: 0900000000\
+SKU: SO-A4-RIVET-S\
+Tiền hoàn: 300k
+bam 1
+bam 1
+anh
+bam 1
+bam 1
+la chu
+bam 1
+la kho
+kho: /hoan 2611110U70A80R
+bam 1
+la chu
+bam 1
+tra đã chuyển rồi
+tra anh

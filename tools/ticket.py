@@ -32,7 +32,7 @@ COLS = ["ID", "Loại", "Trạng thái", "Ngày tạo", "Người tạo", "Kênh
         "Chênh giá KH trả thêm", "Phí ship shop trả", "Phí ship KH trả", "Tiền hoàn KH", "Tổng chi phí shop",
         "Gọi KH", "MVĐ đi", "MVĐ hoàn về", "Ngày gửi đi", "Ngày hàng hoàn về", "Tình trạng hàng hoàn",
         "Người nhận hoàn", "Ảnh hàng hoàn", "Ảnh hàng hoàn (xem)", "Nhập kho QLBH", "Cần duyệt", "Duyệt",
-        "Phạt kho", "Kho giải trình", "Ngày đóng", "Thẻ tin", "Lịch sử", "STK hoàn"]
+        "Phạt kho", "Kho giải trình", "Ngày đóng", "Thẻ tin", "Lịch sử", "STK hoàn", "Bill hoàn tiền"]
 DONG = ("Đóng", "Đã huỷ")
 
 KENH = ["TikTok", "Shopee", "Website", "Facebook", "Khác"]
@@ -443,12 +443,15 @@ def mau(loai):
                      for k in LOAI[loai][2])
 
 
-def wiz_start(uid, chat, loai, by):
+def wiz_start(uid, chat, loai, by, ma=""):
     WIZ[uid] = {"loai": loai, "d": {}, "anh": [], "chat": chat, "by": by}
     _save()
     tsend(chat, f"🎫 <b>{LOAI[loai][1]}</b>\nBấm vào mẫu dưới để chép, điền rồi gửi lại <b>1 tin</b> "
                 "(không cần đủ ô không bắt buộc; /huy để dừng):")
-    tsend(chat, f"<code>{esc(mau(loai))}</code>")
+    mau_ = mau(loai)
+    if ma:
+        mau_ = re.sub(r"^(Mã đơn:).*$", lambda x: f"{x.group(1)} {ma}", mau_, count=1, flags=re.M)
+    tsend(chat, f"<code>{esc(mau_)}</code>")
 
 
 def norm(s):
@@ -839,7 +842,9 @@ def act(cq, tid, a):
             tedit(chat, mid, cq["message"].get("text", "") + f"\n\n{'✅ Đã duyệt' if ok else '❌ Đã từ chối'}")
         return refresh(r, f"{'✅ Đã duyệt' if ok else '❌ Từ chối'} ({esc(who)})", True)
     elif a == "hoan_tien":
-        upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today()}, "đã hoàn tiền KH", who)
+        answer(cq)
+        return prompt(chat, mid, tid, "bill_hoan", u,
+                      f"💸 {esc(who)} trả lời tin này bằng <b>ảnh bill chuyển khoản hoàn tiền</b> {esc(tid)} → ticket tự đóng.")
     elif a in ("xl_ok", "xl_ko", "den"):
         v = {"xl_ok": "đã xử lý xong", "xl_ko": "không xử lý được", "den": "ĐVVC đền tiền"}[a]
         upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today()}, v, who)
@@ -904,6 +909,15 @@ def on_prompt_reply(m, p):
     t = (m.get("text") or m.get("caption") or "").strip()
     f = p["f"]
     key = f"{chat}:{m['reply_to_message']['message_id']}"
+    if f == "bill_hoan":
+        if not m.get("photo"):
+            return prompt(chat, m["message_id"], r["ID"], "bill_hoan", u,
+                          f"Cần <b>ảnh bill</b>: {esc(who)} trả lời tin này bằng ảnh chuyển khoản.")
+        PEND.pop(key, None); _save()
+        fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"]
+        upd(r, {"Bill hoàn tiền": "tg:" + fid, "Trạng thái": "Đóng", "Ngày đóng": today()}, "đã hoàn tiền KH (có bill)", who)
+        tsend(chat, f"✅ {esc(r['ID'])}: đã hoàn tiền, lưu bill, đóng ticket.", reply_to=m["message_id"])
+        return refresh(r, f"💸 Đã hoàn tiền KH — {esc(who)} (có bill)", True)
     if f == "anh_hoan":
         if m.get("photo"):
             fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"]
@@ -1199,6 +1213,12 @@ def handle(u):
             if WIZ.get(uid):
                 wiz_choice(uid, p[2], p[3])
             return
+        if p[1] == "mm":   # mở ticket với mã đơn có sẵn
+            answer(cq)
+            if not is_member(uid):
+                return tsend(cq["message"]["chat"]["id"], "Bạn cần ở nhóm Đổi trả mới mở được ticket.")
+            wiz_start(uid, cq["message"]["chat"]["id"], p[2], ten(cq["from"]), ma=":".join(p[3:]))
+            return
         if p[1] == "m":
             answer(cq)
             if not is_member(uid):
@@ -1254,6 +1274,10 @@ def handle(u):
         return EXT_PRIV[lenh](m, arg)
     if lenh == "/start" and arg.split("_")[0] in EXT_START:
         return EXT_START[arg.split("_")[0]](m, arg)
+    if lenh == "/start" and arg.startswith("tkm_"):
+        ma = arg[4:]
+        b = [[{"text": f"{LOAI[k][1]}", "callback_data": f"tk:mm:{k}:{ma[:40]}"}] for k in LOAI if k != "hoan"]
+        return tsend(chat, f"🎫 Mở ticket cho đơn <code>{esc(ma)}</code> — loại nào?", b)
     if lenh == "/start" and arg.startswith("tk_") and arg[3:] in LOAI:
         return wiz_start(uid, chat, arg[3:], ten(m.get("from")))
     loai = lenh.lstrip("/")

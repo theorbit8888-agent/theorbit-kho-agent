@@ -233,6 +233,8 @@ def bam(arg):
     i = int(p[0]) - 1
     nhan, data = t["nut"][i]
     print(f"👆 {TEN[DANG['uid']]} bấm [{nhan}]")
+    if int(t["chat"]) < 0:   # bấm nút trong nhóm nào thì đang đứng ở nhóm đó
+        DANG["chat"] = int(t["chat"])
     if data and data.startswith("http"):
         m = re.search(r"[?&]start=([\w-]+)", data)
         if not m:
