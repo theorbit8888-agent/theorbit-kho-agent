@@ -1,5 +1,5 @@
 # Tình trạng hàng & restock — The Orbit
-Xuất từ Lark Base lúc 21:32 07/11/2026 (agent kho). CSKH: chỉ nói đúng cột "CSKH được nói"; ngày về luôn là khoảng dự kiến, không hứa ngày cụ thể. Tồn chính xác vẫn tra Nhanh.vn/sàn.
+Xuất từ Lark Base lúc 23:30 10/11/2026 (agent kho). CSKH: chỉ nói đúng cột "CSKH được nói"; ngày về luôn là khoảng dự kiến, không hứa ngày cụ thể. Tồn chính xác vẫn tra Nhanh.vn/sàn.
 
 ## Tình trạng theo mẫu
 | Mẫu | Size/màu | Tình trạng | Về dự kiến | CSKH được nói | Cập nhật |
@@ -12,5 +12,5 @@ Xuất từ Lark Base lúc 21:32 07/11/2026 (agent kho). CSKH: chỉ nói đúng
 ## Hàng đặt lại chưa về đủ
 | Mẫu | Size/màu | SL đặt | SL đã nhận | Hẹn về | Trạng thái |
 |---|---|---|---|---|---|
-| DRIFT CAR | M:L:XL = 1:1:1 (~83/84/83) | 250 |  | 22/11/2026 | Đang SX |
-| ISOLENT TEE | M:L:XL = 1:1:1 (~83/84/83) | 250 |  | 22/11/2026 | Đang SX |
+| DRIFT CAR |  | 250 |  | 22/11/2026 | Đang SX |
+| ISOLENT TEE |  | 250 |  | 22/11/2026 | Đang SX |

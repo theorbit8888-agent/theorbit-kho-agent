@@ -1,0 +1,15 @@
+# /dathang: đặt lại / chốt SX → 02 + 05, rồi /hangve cộng vào đơn đặt
+la kho
+kho: /dathang\
+Mẫu: DRIFT CAR, ISOLENT TEE\
+SL: 250\
+Về: 15 ngày\
+Người: Huyền
+kho: /dathang POLO 777 300 về 20-22/11
+kho: /dathang AURA
+kho: /dathang
+kho: /hangve\
+Kho: Q2\
+DRIFT CAR M 83 83 0\
+DRIFT CAR L 84 84 0
+xem

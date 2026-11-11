@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Việc thủ kho trên Telegram (nhóm "The Orbit - Kho hàng về & restock"), luồng cố định có nút, không gọi Claude.
 
+  /dathang  đặt lại / chốt SX: mẫu, SL (mặc định 250), size (1:1:1), về (khoảng ngày / "15 ngày") → ghi 02, 05, xuất CSKH
   /hangve   hàng về: dán từng dòng "SKU/mẫu size  bill  thực tế  lỗi" → bot so bill, ghi 03, cộng 02, sửa 05,
             báo thiếu/thừa/lỗi cho chủ shop; nút "Đã báo NCC", "Đã nhập Nhanh (gõ ID phiếu)"
   /chotdi   chốt đơn đi cuối ca: "Sàn  cần gửi  đã đóng  đã bàn giao  huỷ" → ghi 07, chỉ ra lệch
@@ -85,6 +86,16 @@ def doc_dong(line):
 def ten_mau(mau):
     hit = sku_bang().get(mau.upper())
     return hit[0] if hit else mau
+
+
+def tim_ten(mau):
+    """Tên chuẩn Nhanh của mẫu: mã SKU, hoặc mọi chữ của mẫu đều có trong đúng 1 tên (POLO 777 → 777 DENIM POLO)."""
+    hit = sku_bang().get(mau.upper())
+    if hit:
+        return hit[0]
+    chu = set(mau.lower().split())
+    ten = {v[0] for v in sku_bang().values() if chu <= set(v[0].lower().split())}
+    return ten.pop() if len(ten) == 1 else None
 
 
 def khop(mau, name):
@@ -200,6 +211,106 @@ def cap_nhat_02_05(items, kho):
     except BaseException as e:
         print("kho_flow: cập nhật 02/05 lỗi", e, flush=True)
     return " · ".join(out)
+
+
+# ======================= /dathang =======================
+
+def ve_khoang(v):
+    """'22-25/11' / '22/11' / '15 ngày' / 'sx 15 ngày' → (ngày ISO bắt đầu, 'dd–dd/mm') hoặc (None, '')."""
+    v = v.strip().lower()
+    m = re.search(r"(\d+)\s*ngày", v)
+    if m:
+        a = datetime.now() + timedelta(days=int(m[1]))
+        b = a + timedelta(days=3)
+        return a.strftime("%Y-%m-%d"), (f"{a:%d}–{b:%d/%m}" if a.month == b.month else f"{a:%d/%m}–{b:%d/%m}")
+    m = re.search(r"(\d{1,2})(?:\s*[-–]\s*(\d{1,2}))?\s*/\s*(\d{1,2})", v)
+    if m:
+        nam = datetime.now().year
+        try:
+            a = datetime(nam, int(m[3]), int(m[1]))
+        except ValueError:
+            return None, ""
+        if a < datetime.now() - timedelta(days=60):
+            a = a.replace(year=nam + 1)
+        return a.strftime("%Y-%m-%d"), (f"{m[1]}–{m[2]}/{m[3]}" if m[2] else f"{m[1]}/{m[3]}")
+    return None, ""
+
+
+def dathang(m, arg):
+    """Đặt lại / chốt SX: ghi 02 mỗi mẫu 1 dòng, cập nhật 05 cho CSKH, xuất file. Mặc định 250/mẫu, M:L:XL 1:1:1."""
+    chat, who = m["chat"]["id"], ten(m.get("from"))
+    maus, sl, size, ve, nguoi, ghi, loai = [], 250, "M:L:XL = 1:1:1", "", "", "", ""
+    lines = [x.strip() for x in arg.splitlines() if x.strip() and not x.strip().startswith("(")]
+    if len(lines) == 1 and ":" not in lines[0]:   # 1 dòng: /dathang AURA 250 về 20-22/11
+        t = lines[0]
+        mv = re.search(r"\b(về|ve|sx)\b(.*)$", t, re.I)
+        if mv:
+            ve, t = mv[2], t[:mv.start()]
+        ms = list(re.finditer(r"\b(\d{2,4})\b", t))   # số cuối = SL (tên mẫu có thể có số, vd POLO 777)
+        if ms and (len(ms) > 1 or t[ms[-1].end():].strip() == ""):
+            sl, t = int(ms[-1][1]), (t[:ms[-1].start()] + t[ms[-1].end():])
+        maus = [x.strip() for x in re.split(r",| và | va ", t) if x.strip()]
+    else:
+        for line in lines:
+            k, _, v = line.partition(":")
+            k, v = k.strip().lower(), v.strip()
+            if k.startswith(("mẫu", "mau", "sp", "sản phẩm")):
+                maus += [x.strip() for x in re.split(r",| và | va ", v) if x.strip()]
+            elif k.startswith(("sl", "số lượng")):
+                sl = TK.tien(re.sub(r"[^\d]", "", v)) or sl
+            elif k.startswith("size"):
+                size = v or size
+            elif k.startswith(("về", "ve", "sx", "ngày về")):
+                ve = v
+            elif k.startswith(("người", "nguoi", "nhận", "phụ trách")):
+                nguoi = v.lstrip("@")
+            elif k.startswith(("loại", "loai")):
+                loai = v
+            elif k.startswith(("ghi chú", "ghi chu")):
+                ghi = v
+    if not maus:
+        return tsend(chat, "Chưa đọc được mẫu nào. Mẫu:\n" + MAU["dathang"], reply_to=m["message_id"])
+    ngay_ve, khoang = ve_khoang(ve) if ve else (None, "")
+    tinh = TG.rows(TINH, fresh=True)
+    L, cap05 = [], []
+    for mau in maus:
+        chuan = tim_ten(mau)
+        ten_ = chuan or mau.upper()
+        dong05 = next((r for r in tinh if khop(ten_, str(r.get("Tên sản phẩm", ""))) or
+                       khop(mau, str(r.get("Tên sản phẩm", "")))), None)
+        da_ban = chuan is not None
+        moi = loai.lower().startswith(("sx", "mới", "moi")) if loai else (dong05 is None and not da_ban)
+        TG.kho("add", table=TG.sname(DAT), rows=[{
+            "Tên sản phẩm": ten_, "SL đặt": sl, "Màu / Size": size, "Ngày đặt": today(),
+            "Hẹn hàng về": ngay_ve or "", "Trạng thái đặt": "Đang SX", "Người phụ trách": nguoi or who,
+            "Vướng mắc": "; ".join(x for x in (("Mẫu mới chốt SX" if moi else "Đặt lại"),
+                                               f"về dự kiến {khoang}" if khoang else "chưa có ngày về", ghi) if x),
+            "Nguồn tin": f"tg:{m['message_id']} {who} {datetime.now():%d/%m}"}])
+        L.append(f"• <b>{esc(ten_)}</b>: {sl} cái · {esc(size)}" + (f" · về {esc(khoang)}" if khoang else ""))
+        ve05 = khoang or "chưa có ngày"
+        if dong05 is None:
+            TG.kho("add", table=TG.sname(TINH), rows=[{
+                "Tên sản phẩm": ten_, "Size/màu": "M, L, XL", "Tình trạng": "Sắp mở bán" if moi else "Sắp hết",
+                "Hàng về dự kiến": ve05,
+                "CSKH được nói": "Mẫu này shop đang sản xuất, có hàng shop báo ngay, bạn theo dõi shop nha" if moi else
+                                 "Size nào đang hết shop đang về thêm hàng, có hàng shop báo ngay, bạn theo dõi shop nha",
+                "Cập nhật lúc": today(), "Ghi chú kho": f"Đặt {sl} ngày {datetime.now():%d/%m}"}])
+            cap05.append(f"{ten_} → {'Sắp mở bán' if moi else 'Sắp hết, chờ hàng'}")
+        else:
+            f = {"Hàng về dự kiến": ve05, "Cập nhật lúc": today(),
+                 "Ghi chú kho": f"Đặt lại {sl} ngày {datetime.now():%d/%m}"}
+            if dong05.get("Tình trạng") in ("Hết - chờ restock", "Hết - không restock", ""):
+                f |= {"Tình trạng": "Hết - chờ restock",
+                      "CSKH được nói": "Mẫu này shop đang về thêm hàng, có hàng shop báo ngay, bạn theo dõi shop nha"}
+            TG.kho("update", table=TG.sname(TINH), id=dong05["_id"], fields=f)
+            cap05.append(f"{dong05.get('Tên sản phẩm')} → về {ve05}")
+    TG._CACHE.clear()
+    subprocess.run([sys.executable, os.path.join(ROOT, "tools", "lark.py"), "export"], cwd=ROOT,
+                   capture_output=True, timeout=120)
+    tsend(chat, f"🧵 <b>ĐẶT HÀNG</b> {datetime.now():%d/%m} · {esc(who)}" + (f" · nhận: {esc(nguoi)}" if nguoi else "")
+          + "\n" + "\n".join(L) + f"\n🔄 02 đã ghi · 05: {esc('; '.join(cap05))} (CSKH đã thấy)"
+          + ("" if khoang else "\n⚠️ Chưa có ngày về: gõ lại kèm <code>Về: 22-25/11</code> hoặc <code>Về: 15 ngày</code>")
+          + "\n➡️ Hàng về thì <code>/hangve</code>, bot tự cộng vào đơn đặt này.", reply_to=m["message_id"])
 
 
 # ======================= /chotdi =======================
@@ -491,12 +602,15 @@ MAU = {
     "chotdi": "/chotdi\n(sàn | cần gửi | đã đóng | đã bàn giao | huỷ)\nTikTok 0 0 0 0\nShopee 0 0 0 0\nWeb 0 0 0 0",
     "chothoan": "/chothoan\n(dán MVĐ sàn báo đã hoàn, mỗi dòng 1 mã)",
     "kiemkho": "/kiemkho\n(SKU | tồn Nhanh | đếm thực tế)\nSO-A4-RIVET-S 12 12",
+    "dathang": "/dathang\nMẫu: DRIFT CAR, ISOLENT TEE\nSL: 250\nSize: M:L:XL = 1:1:1\nVề: 15 ngày\nNgười: Huyền",
 }
 
 
 def menu(m, arg):
     tsend(m["chat"]["id"],
           "🏬 <b>Việc kho trên Telegram</b> — chép mẫu, điền, gửi 1 tin:\n\n"
+          f"🧵 <b>Đặt hàng / chốt SX</b> (mặc định 250/mẫu, 1:1:1; 1 dòng cũng được: "
+          f"<code>/dathang AURA 250 về 20-22/11</code>):\n<code>{esc(MAU['dathang'])}</code>\n\n"
           f"📦 <b>Hàng về</b> (ảnh bill để ở chú thích nếu có):\n<code>{esc(MAU['hangve'])}</code>\n\n"
           f"↩️ <b>Nhận hàng hoàn</b>: <code>/hoan MVĐ</code> (nhiều kiện: mỗi dòng 1 MVĐ)\n\n"
           f"🚚 <b>Chốt đơn đi</b> (17h):\n<code>{esc(MAU['chotdi'])}</code>\n\n"
@@ -604,9 +718,9 @@ def san_bao(d, send=False, luon=False):
         tsend(kchat(), t)
 
 
-TK.EXT_CMDS.update({"/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
+TK.EXT_CMDS.update({"/dathang": dathang, "/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
                     "/nhanh": nhanh_tt})
-TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/hangve", "/chotdi", "/chothoan", "/kiemkho")})
+TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/dathang", "/hangve", "/chotdi", "/chothoan", "/kiemkho")})
 TK.EXT_CB["kf"] = on_cb
 TK.EXT_REPLY.update({"kf_nhanh": on_reply, "kf_lechdi": on_reply})
 if not hasattr(TK, "STATE_KF"):
