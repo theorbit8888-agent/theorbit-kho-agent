@@ -1,0 +1,14 @@
+# Dự báo hết hàng → chủ shop bấm Đặt / Không restock / Nhắc 3 ngày; chưa bấm thì mai nhắc lại
+nhanh-gia
+dubao
+la chu
+bam 1
+tra 200 về 15 ngày
+bam 5 @1
+xem SP 05 · TÌNH TRẠNG HÀNG
+# sáng hôm sau: Rivet đã đặt, Redline không restock → không còn gì để hỏi
+dubao
+la kho
+kho: /dubao
+kho: /dubao bo TS-H2-REDLINE
+dubao

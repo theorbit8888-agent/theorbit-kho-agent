@@ -36,3 +36,11 @@ Mỗi lần xử lý tin được tag, agent để ý 3 thứ:
 | Ngày | Thay đổi | Ai chốt | Lý do |
 |---|---|---|---|
 | 04/11/2026 | Tạo v1: đặt lại 10 ngày, demo 7 ngày, hạn sàn 24h, tồn đọng 3 ngày, chưa nhập Nhanh 1 ngày | chủ shop | yêu cầu ban đầu |
+
+## Dự báo hết hàng → chủ shop quyết đặt (từ 11/11/2026)
+- Mỗi sáng (job `.flow` lúc 9:02, `kho_flow.py hen`) bot tính từng SKU: **bán được / (bán 14 ngày ÷ 14)** = số ngày còn bán. Size nào còn dưới **lead 15 + đệm 5 = 20 ngày** (hoặc đã hết mà vẫn đang bán ≥5 cái/14 ngày) thì mẫu đó vào danh sách.
+- Bot **nhắn riêng chủ shop** (TICKET_DUYET_IDS / OWNER_TELE_ID) 1 tin, mỗi mẫu 3 nút: **✅ Đặt** (trả lời "SL về ..." → ghi như /dathang vào 02 + 05, báo nhóm kho), **🚫 Không restock** (thôi nhắc vĩnh viễn; 05 → CSKH nói "không về thêm, chốt sớm" / "Hết - không restock"), **⏰ 3 ngày**.
+- Chưa bấm → **sáng mai nhắc lại** (đếm số lần nhắc). Mẫu đã có đơn đặt chưa về ở bảng 02 hoặc vừa /dathang → không hỏi. "Đã đặt" im 30 ngày rồi hỏi lại nếu vẫn sắp hết.
+- Quyết định lưu ở `logs/dat_hang.json`. Xem: `/dubao` trong nhóm kho. Bỏ quyết định (để bot hỏi lại): `/dubao bo MÃ-MẪU`.
+- Ngưỡng ở `canh_bao.json` → `du_bao_dat_hang` (ngay_ban, lead, dem, toi_thieu, da_dat_im, hoan). Cần dữ liệu Nhanh mới trong 24h (chủ shop /dangnhapnhanh 1 lần); không có thì bot im.
+- Thử: `python3 tools/san_thu.py kich-ban/dubao.txt` (dữ liệu Nhanh giả, không đụng file thật).

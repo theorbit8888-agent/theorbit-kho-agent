@@ -20,6 +20,8 @@ HƯỚNG DẪN (mỗi dòng):
   anh [chú thích]         gửi 1 ảnh (giả) vào nhóm đang đứng, có thể kèm lệnh: anh /hoan SPX123
   xem <tên bảng>          in dữ liệu 1 bảng (xem = liệt kê các bảng)
   phieu                   in phiếu điểm kho cuối ngày (bot gửi chủ shop 18h)
+  nhanh-gia               nạp dữ liệu Nhanh giả (tồn + đơn 14 ngày) để thử dự báo hết hàng
+  dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   # ...                   ghi chú, bỏ qua
 Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng sau.
 """
@@ -34,6 +36,9 @@ if "--reset" in sys.argv:
         p = os.path.join(SAN, f)
         if os.path.isfile(p):
             os.remove(p)
+        elif f == "nhanh":   # dữ liệu Nhanh giả (nhanh-gia)
+            import shutil
+            shutil.rmtree(p, ignore_errors=True)
     print("Đã xoá dữ liệu sân thử."); sys.exit()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -198,6 +203,7 @@ NH.bao_loi = lambda *a, **k: print("   (sân thử: Nhanh lỗi — bỏ qua bá
 if "--co-nhanh" not in sys.argv:   # mặc định không dùng dữ liệu Nhanh trên máy (máy team không có)
     NH.CACHE = os.path.join(SAN, "nhanh")
 TK.STATE = os.path.join(SAN, "ticket_state.json")
+kho_flow.DH_STATE = os.path.join(SAN, "dat_hang.json")   # quyết định đặt hàng thử, không đụng file thật
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN
 
@@ -243,7 +249,7 @@ def bam(arg):
     i = int(p[0]) - 1
     nhan, data = t["nut"][i]
     print(f"👆 {TEN[DANG['uid']]} bấm [{nhan}]")
-    if int(t["chat"]) < 0:   # bấm nút trong nhóm nào thì đang đứng ở nhóm đó
+    if int(t["chat"]) < 0 or int(t["chat"]) == DANG["uid"]:   # bấm nút ở nhóm / chat riêng nào thì đang đứng ở đó
         DANG["chat"] = int(t["chat"])
     if data and data.startswith("http"):
         m = re.search(r"[?&]start=([\w-]+)", data)
@@ -298,6 +304,24 @@ def dong(line):
         return gui(rest or None, photo=True)
     if cmd == "xem":
         return xem(rest)
+    if cmd == "nhanh-gia":   # Rivet M sắp hết, Redline đã hết M, Archive dư hàng
+        os.makedirs(NH.CACHE, exist_ok=True)
+        sp = {"SO-A4-RIVET-S": ("ORBIT RIVET WASHED SHORTS - S", 23, 20), "SO-A4-RIVET-M": ("ORBIT RIVET WASHED SHORTS - M", 7, 38),
+              "SO-A4-RIVET-L": ("ORBIT RIVET WASHED SHORTS - L", 10, 12), "SO-A4-RIVET-XL": ("ORBIT RIVET WASHED SHORTS - XL", 55, 6),
+              "TS-H2-REDLINE-M": ("REDLINE TEE - M", 0, 17), "TS-H2-REDLINE-L": ("REDLINE TEE - L", 5, 9),
+              "TS-D2-ARCHIVE-S": ("ARCHIVE TEE - S", 234, 8)}
+        json.dump({k: {"ten": v[0], "co_the_ban": v[1], "trong_kho": v[1]} for k, v in sp.items()},
+                  open(os.path.join(NH.CACHE, "products.json"), "w"))
+        json.dump({str(i): {"id": str(i), "kenh": "tiktok", "ma_san": f"58{i:010d}", "mvd": f"GIA{i:06d}", "dvvc": "",
+                            "st": 60, "st_ten": "Thành công", "tao": time.strftime("%Y-%m-%d 09:00:00"), "cap_nhat": "",
+                            "gui_dvvc": "", "kho": "KHO TỔNG - CN QUẬN 2", "sp": [{"ma": k, "sl": v[2]}]}
+                   for i, (k, v) in enumerate(sp.items())},
+                  open(os.path.join(NH.CACHE, "orders.json"), "w"))
+        json.dump({"dong_bo": time.strftime("%Y-%m-%d %H:%M")}, open(os.path.join(NH.CACHE, "meta.json"), "w"))
+        return print("   (đã nạp Nhanh giả: Rivet, Redline, Archive)")
+    if cmd == "dubao":
+        kho_flow.nhac_dat_hang(True)
+        return
     if cmd == "phieu":   # phiếu điểm kho cuối ngày (bot gửi chủ shop 18h)
         return print(re.sub(r"<[^>]+>", "", kho_flow.phieu_diem()))
     gui(line)

@@ -346,6 +346,12 @@ def dathang(m, arg):
                       "CSKH được nói": "Mẫu này shop đang về thêm hàng, có hàng shop báo ngay, bạn theo dõi shop nha"}
             TG.kho("update", table=TG.sname(TINH), id=dong05["_id"], fields=f)
             cap05.append(f"{dong05.get('Tên sản phẩm')} → về {ve05}")
+    st = dh_st()
+    for mau in maus:
+        ma = mau.upper() if mau.upper() in sku_bang() else next((k for k, v in sku_bang().items() if v[0] == tim_ten(mau)), None)
+        if ma:
+            st.setdefault(ma, {}).update(tt="da_dat", luc=today(), ai=who)
+    dh_luu(st)
     TG._CACHE.clear()
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "lark.py"), "export"], cwd=ROOT,
                    capture_output=True, timeout=120)
@@ -487,6 +493,224 @@ def canh_bao_nhap(ngay=14, cover=7, toi_thieu=5):
     return t.strip()
 
 
+# ======================= Dự báo hết hàng → chủ shop quyết đặt / không restock =======================
+# Mỗi sáng (hen): mẫu nào có size sẽ hết trước khi kịp sản xuất (tồn bán được / tốc độ bán < lead + đệm)
+# → nhắn riêng chủ shop kèm nút. Chưa bấm thì mai nhắc lại. Quyết định lưu ở logs/dat_hang.json.
+
+DH_STATE = os.path.join(ROOT, "logs", "dat_hang.json")
+
+
+def dh_cfg():
+    import json
+    try:
+        c = json.load(open(os.path.join(ROOT, "knowledge", "canh_bao.json"))).get("du_bao_dat_hang", {})
+    except (OSError, ValueError):
+        c = {}
+    return {"bat": True, "ngay_ban": 14, "lead": 15, "dem": 5, "toi_thieu": 5, "da_dat_im": 30, "hoan": 3} | c
+
+
+def dh_st():
+    import json
+    try:
+        return json.load(open(DH_STATE))
+    except (OSError, ValueError):
+        return {}
+
+
+def dh_luu(st):
+    import json
+    os.makedirs(os.path.dirname(DH_STATE), exist_ok=True)
+    json.dump(st, open(DH_STATE, "w"), ensure_ascii=False, indent=1)
+
+
+def ma_mau(sku):
+    p = sku.upper().rsplit("-", 1)
+    return p[0] if len(p) == 2 and p[1] in SIZES else sku.upper()
+
+
+def du_bao():
+    """[(ngày còn ít nhất, mã mẫu, tên, [(size, bán được, bán N ngày, ngày còn)])] — mẫu có size sẽ hết trước lead+đệm."""
+    c = dh_cfg()
+    if not NH.con_moi(24 * 60):
+        return None
+    ban = {}
+    for o in NH.orders().values():
+        if o.get("st") in (58, 63, 64):  # huỷ
+            continue
+        for x in o.get("sp") or []:
+            ban[str(x.get("ma"))] = ban.get(str(x.get("ma")), 0) + int(x.get("sl") or 0)
+    gom = {}
+    for ma, p in NH.products().items():
+        if ma.startswith(("TEST", "PK-A0-STICKER", "CB-")):
+            continue
+        sl, ton = ban.get(ma, 0), max(0, int(p.get("co_the_ban") or 0))
+        if sl < c["toi_thieu"]:
+            continue
+        con = ton / (sl / c["ngay_ban"])
+        if con < c["lead"] + c["dem"]:
+            mau = ma_mau(ma)
+            ten_ = re.sub(r"\s*-\s*\w+$", "", str(p.get("ten") or mau))
+            g = gom.setdefault(mau, {"ten": ten_, "size": []})
+            g["size"].append((ma[len(mau) + 1:] or ma, ton, sl, con))
+    out = [(min(s[3] for s in g["size"]), mau, g["ten"], sorted(g["size"], key=lambda s: s[3]))
+           for mau, g in gom.items()]
+    return sorted(out)
+
+
+def dh_dang_dat(mau, ten_):
+    """Đã có đơn đặt chưa về (bảng 02) cho mẫu này chưa."""
+    for r in TG.rows(DAT):
+        if r.get("Trạng thái đặt") in ("Đã về đủ", "Huỷ") or r.get("Đã về đủ"):
+            continue
+        n = str(r.get("Tên sản phẩm", ""))
+        if khop(mau, n) or khop(ten_, n):
+            return True
+    return False
+
+
+def dh_can_hoi(mau, ten_, st):
+    c, s = dh_cfg(), st.get(mau) or {}
+    if s.get("tt") == "khong":
+        return False
+    if s.get("tt") == "da_dat" and s.get("luc", "") >= (datetime.now() - timedelta(days=c["da_dat_im"])).strftime("%Y-%m-%d"):
+        return False
+    if s.get("tt") == "hoan" and s.get("den", "") > today():
+        return False
+    return not dh_dang_dat(mau, ten_)
+
+
+def dh_dong(d, mau, ten_, sizes):
+    het = (datetime.now() + timedelta(days=d)).strftime("%d/%m")
+    t = f"• <b>{esc(ten_)}</b> <code>{esc(mau)}</code> — " + ("<b>đã hết 1 size</b>" if d < 1 else f"hết ~<b>{het}</b> ({d:.0f} ngày)")
+    return t + "\n   " + " · ".join(f"{esc(s)}: còn {ton}, bán {sl}" + ("" if con >= 60 else f" → {con:.0f}n")
+                                    for s, ton, sl, con in sizes)
+
+
+def dh_nut(mau, ten_):
+    n = ten_.replace("ORBIT ", "").replace("The ORBIT ", "")[:14]
+    return [{"text": f"✅ Đặt {n}", "callback_data": f"kf:ddat:{mau}"},
+            {"text": "🚫 Không restock", "callback_data": f"kf:dkhong:{mau}"},
+            {"text": "⏰ 3 ngày", "callback_data": f"kf:dhoan:{mau}"}]
+
+
+def nhac_dat_hang(send=False):
+    """Sáng: nhắn riêng chủ shop các mẫu sắp hết chưa quyết. Mỗi ngày nhắc lại tới khi bấm."""
+    c = dh_cfg()
+    if not c["bat"]:
+        return ""
+    ds = du_bao()
+    if ds is None:
+        return ""
+    st = dh_st()
+    hoi = [x for x in ds if dh_can_hoi(x[1], x[2], st)][:10]
+    if not hoi:
+        return ""
+    nhac = sum(1 for _, mau, _, _ in hoi if (st.get(mau) or {}).get("hoi_lan"))
+    t = (f"🔔 <b>Dự báo hết hàng — cần anh/chị quyết</b> ({len(hoi)} mẫu"
+         + (f", {nhac} mẫu nhắc lại" if nhac else "") + f")\nTính theo bán {c['ngay_ban']} ngày; sản xuất ~{c['lead']} ngày "
+         f"nên mẫu hết trước {c['lead'] + c['dem']} ngày là phải đặt ngay.\n\n"
+         + "\n".join(dh_dong(*x) for x in hoi)
+         + "\n\nBấm <b>Đặt</b> rồi trả lời SL + ngày về (bot ghi vào kho, báo CSKH). Chưa bấm thì mai nhắc lại.")
+    for _, mau, _, _ in hoi:
+        s = st.setdefault(mau, {})
+        s["hoi_lan"] = s.get("hoi_lan", 0) + (1 if send else 0)
+        s["hoi_luc"] = today()
+    if send:
+        dh_luu(st)
+        for o in TK.duyet_ids():
+            tsend(o, t, [dh_nut(x[1], x[2]) for x in hoi])
+    else:
+        print(re.sub(r"<[^>]+>", "", t))
+    return t
+
+
+def dh_bo_nut(cq, mau):
+    kb = ((cq["message"].get("reply_markup") or {}).get("inline_keyboard") or [])
+    return [r for r in kb if not any(mau in str(b.get("callback_data", "")) for b in r)]
+
+
+def dh_cb(cq, kind, mau):
+    u, who = cq["from"], ten(cq["from"])
+    chat, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
+    old = cq["message"].get("text", "")
+    if str(u["id"]) not in TK.duyet_ids():
+        return answer(cq, "Chỉ chủ shop quyết đặt hàng", True)
+    st = dh_st()
+    s = st.setdefault(mau, {})
+    ten_ = ten_mau(mau)
+    if kind == "ddat":
+        return TK.prompt(chat, mid, mau, "kf_ddat", u,
+                         f"✅ {esc(who)} trả lời tin này: <b>SL + ngày về</b> cho {esc(ten_)}, vd <code>200 về 15 ngày</code> "
+                         "(mặc định size 1:1:1). Gõ <code>0</code> nếu chỉ đánh dấu đã đặt.")
+    if kind == "dkhong":
+        s.update(tt="khong", luc=today(), ai=who)
+        dh_luu(st)
+        dh_05_khong(mau, ten_)
+        return tedit(chat, mid, esc(old) + f"\n\n🚫 {esc(ten_)}: không restock — {esc(who)} (bot thôi nhắc, CSKH đã biết)",
+                     dh_bo_nut(cq, mau))
+    if kind == "dhoan":
+        den = (datetime.now() + timedelta(days=dh_cfg()["hoan"])).strftime("%Y-%m-%d")
+        s.update(tt="hoan", den=den, ai=who)
+        dh_luu(st)
+        return tedit(chat, mid, esc(old) + f"\n\n⏰ {esc(ten_)}: nhắc lại {den[8:]}/{den[5:7]} — {esc(who)}",
+                     dh_bo_nut(cq, mau))
+
+
+def dh_05_khong(mau, ten_):
+    """Không restock → bảng 05 cho CSKH: còn thì 'chốt sớm', hết thì 'Hết - không restock'."""
+    ton = sum(max(0, int(p.get("co_the_ban") or 0)) for ma, p in NH.products().items() if ma_mau(ma) == mau)
+    f = {"Cập nhật lúc": today(), "Ghi chú kho": f"Không restock (chủ shop {datetime.now():%d/%m})", "Hàng về dự kiến": "",
+         "Tình trạng": "Hết - không restock" if ton == 0 else "Sắp hết",
+         "CSKH được nói": "Mẫu này shop không sản xuất thêm nữa ạ" if ton == 0 else
+                          "Mẫu này shop không về thêm, size nào còn thì bạn chốt sớm giúp shop nha"}
+    try:
+        r = next((r for r in TG.rows(TINH, fresh=True) if khop(mau, str(r.get("Tên sản phẩm", "")))
+                  or khop(ten_, str(r.get("Tên sản phẩm", "")))), None)
+        if r:
+            TG.kho("update", table=TG.sname(TINH), id=r["_id"], fields=f)
+        else:
+            TG.kho("add", table=TG.sname(TINH), rows=[{"Tên sản phẩm": ten_, "Size/màu": "", **f}])
+        TG._CACHE.clear()
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools", "lark.py"), "export"], cwd=ROOT,
+                       capture_output=True, timeout=120)
+    except BaseException as e:
+        print("kho_flow: 05 không restock lỗi", e, flush=True)
+
+
+def dh_reply(m, p):
+    mau, t = p["id"], (m.get("text") or "").strip()
+    st = dh_st()
+    st.setdefault(mau, {}).update(tt="da_dat", luc=today(), ai=ten(m.get("from")))
+    dh_luu(st)
+    if t in ("0", ""):
+        return tsend(m["chat"]["id"], f"✅ Đã đánh dấu {esc(ten_mau(mau))} đã đặt, bot thôi nhắc.", reply_to=m["message_id"])
+    # ghi như /dathang trong nhóm kho để kho + CSKH cùng thấy
+    dathang({"chat": {"id": kchat() or m["chat"]["id"]}, "from": m.get("from"), "message_id": None}, f"{mau} {t}")
+    tsend(m["chat"]["id"], "✅ Đã ghi đặt hàng, báo nhóm kho + CSKH.", reply_to=m["message_id"])
+
+
+def dubao(m, arg):
+    """/dubao: xem dự báo + quyết định đã có. /dubao bo MÃ: bỏ quyết định (để bot hỏi lại)."""
+    chat = m["chat"]["id"]
+    a = arg.split()
+    if a[:1] == ["bo"] and len(a) > 1:
+        st = dh_st()
+        st.pop(a[1].upper(), None)
+        dh_luu(st)
+        return tsend(chat, f"↩️ Bỏ quyết định của {esc(a[1].upper())}, sáng mai bot hỏi lại nếu vẫn sắp hết.",
+                     reply_to=m["message_id"])
+    ds = du_bao()
+    if ds is None:
+        return tsend(chat, "Chưa có dữ liệu Nhanh trong 24h (chủ shop nhắn /dangnhapnhanh cho bot).", reply_to=m["message_id"])
+    st = dh_st()
+    nhan = {"khong": "🚫 không restock", "da_dat": "✅ đã đặt", "hoan": "⏰ hẹn nhắc"}
+    L = [dh_dong(*x) + (f"\n   {nhan.get((st.get(x[1]) or {}).get('tt'), '')}" if (st.get(x[1]) or {}).get("tt") else
+                        ("\n   📦 có đơn đặt chưa về (bảng 02)" if dh_dang_dat(x[1], x[2]) else "\n   ❓ chưa quyết"))
+         for x in ds[:20]]
+    tsend(chat, "📈 <b>Dự báo hết hàng</b>\n\n" + ("\n".join(L) or "Không mẫu nào sắp hết 🎉")
+          + "\n\nBỏ quyết định: <code>/dubao bo MÃ</code>", reply_to=m["message_id"])
+
+
 # ======================= /chothoan =======================
 
 def chothoan(m, arg):
@@ -625,6 +849,8 @@ def on_cb(cq, p):
         st["tick"][i] = "" if st["tick"][i] else f"{who} {datetime.now():%H:%M}"
         TK._save()
         return tedit(chat, mid, dc_text(st), dc_btn(st))
+    if kind in ("ddat", "dkhong", "dhoan"):
+        return dh_cb(cq, kind, key)
     if kind == "goiy":
         return goi_y_sku(chat, mid, ":".join(p[2:]))
     if kind == "ncc":
@@ -649,6 +875,8 @@ def on_cb(cq, p):
 def on_reply(m, p):
     chat, who = m["chat"]["id"], ten(m.get("from"))
     t = (m.get("text") or "").strip()
+    if p["f"] == "kf_ddat":
+        return dh_reply(m, p)
     if p["f"] == "kf_nhanh":
         for rid in TK.STATE_KF.get(p["id"], []):
             TG.kho("update", table=TG.sname(NHAP), id=rid, fields={"Đã nhập Nhanh.vn": "✓", "ID phiếu nhập Nhanh": t})
@@ -773,6 +1001,11 @@ def hen(send=False):
         print(re.sub(r"<[^>]+>", "", pd))
         for o in TK.duyet_ids():
             tsend(o, pd)
+    if h < 12:
+        try:
+            nhac_dat_hang(send)
+        except BaseException as e:
+            print("kho_flow: dự báo đặt hàng lỗi", e, flush=True)
     if h < 12 and send and kchat():
         st = dc_st()
         if not any(st["tick"]):
@@ -872,11 +1105,11 @@ def san_bao(d, send=False, luon=False):
         tsend(kchat(), t)
 
 
-TK.EXT_CMDS.update({"/dathang": dathang, "/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
+TK.EXT_CMDS.update({"/dubao": dubao, "/dathang": dathang, "/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
                     "/nhanh": nhanh_tt, "/dauca": dauca})
 TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/dathang", "/hangve", "/chotdi", "/chothoan", "/kiemkho")})
 TK.EXT_CB["kf"] = on_cb
-TK.EXT_REPLY.update({"kf_nhanh": on_reply, "kf_lechdi": on_reply})
+TK.EXT_REPLY.update({"kf_ddat": on_reply, "kf_nhanh": on_reply, "kf_lechdi": on_reply})
 if not hasattr(TK, "STATE_KF"):
     TK.STATE_KF = {}
 
@@ -886,6 +1119,8 @@ if __name__ == "__main__":
     a = sys.argv[1:] or ["help"]
     if a[0] == "setup":
         TK.setup(); setup(); print("đã tạo bảng 09, 10, cột ảnh bill")
+    elif a[0] == "dubao":   # python3 tools/kho_flow.py dubao [--send]: chạy thử nhắc đặt hàng
+        nhac_dat_hang("--send" in a)
     elif a[0] == "hen":
         hen("--send" in a)
     elif a[0] == "sanbao":  # python3 tools/kho_flow.py sanbao '<json>' [--send] [--luon]
