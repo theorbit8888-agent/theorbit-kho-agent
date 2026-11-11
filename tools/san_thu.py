@@ -160,6 +160,7 @@ import ticket as TK  # noqa: E402
 import kho_flow  # noqa: E402,F401
 import cua_hang  # noqa: E402,F401
 import day_bot  # noqa: E402,F401
+day_bot.DRAFT_F = os.path.join(SAN, "day_nhap.json")
 
 import nhanh as NH  # noqa: E402
 import types  # noqa: E402

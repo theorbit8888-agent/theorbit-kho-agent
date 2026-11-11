@@ -59,8 +59,13 @@ Bạn là **agent kho** của The Orbit (thời trang, bán TikTok Shop + Shopee
 - Không chạy `tools/listener.py` trên máy team; không đụng `~/.config/orbit-kho/`.
 
 ## DẠY BOT (/day) — quy trình khi chủ shop nhắn "xử lý bài dạy"
-- Team gõ `/day ...` trong nhóm → bảng `DB · DẠY BOT`, chủ shop bấm 👍 Duyệt làm. Bot KHÔNG tự sửa code.
-- Claude Code (máy chủ shop): `python3 tools/day_bot.py ds` → chỉ làm bài trạng thái "Đã duyệt — chờ làm".
-- Mỗi bài: sửa nhỏ nhất (knowledge/ trước, rồi tools/), thêm kịch bản `kich-ban/`, chạy sân thử + `kich-ban/day-du.txt`,
-  báo chủ shop tóm tắt trước khi cập nhật bot thật; xong: commit + push, chạy `tools/install_launchd.sh`,
-  rồi `python3 tools/day_bot.py xong <Mã> "đã sửa gì" --send` để báo người dạy.
+- Team gõ `/day ...` → bot mở chat riêng, hỏi ngược 6 câu (tình huống · bot nên làm gì · vì sao · quy tắc chung có con số ·
+  ngoại lệ · ví dụ áp dụng/không áp dụng), chặn câu mơ hồ → bảng `DB · DẠY BOT` → chủ shop 👍 Duyệt / ❓ Hỏi lại / ❌.
+  Bot KHÔNG tự sửa code.
+- Claude Code (máy chủ shop): `python3 tools/day_bot.py ds` → chỉ làm bài "Đã duyệt — chờ làm"; `xem D00x` đọc đủ.
+- Trước khi sửa: nếu bài còn mơ hồ / có trường hợp chưa nghĩ tới (tư duy bậc 2: quy tắc này đụng luồng nào khác? ngưỡng
+  tính theo SKU hay cả phiếu? combo/hàng tặng/hoả tốc?) → HỎI NGƯỢC người dạy:
+  `python3 tools/day_bot.py hoi D00x "câu hỏi" --send` rồi chờ trả lời (bài về "Chờ chủ shop", chủ shop thấy trao đổi).
+- Sửa: nhỏ nhất (knowledge/ trước, rồi tools/), thêm kịch bản `kich-ban/` gồm cả ví dụ KHÔNG áp dụng, chạy sân thử +
+  `kich-ban/day-du.txt`, báo chủ shop tóm tắt trước khi cập nhật bot thật; xong: commit + push, `tools/install_launchd.sh`,
+  `python3 tools/day_bot.py xong D00x "đã sửa gì" --send`.

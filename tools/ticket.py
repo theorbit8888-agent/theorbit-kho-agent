@@ -94,6 +94,10 @@ ME = {}
 EXT_CMDS = {}   # lệnh -> fn(m, arg)        (kho_flow.py đăng ký: /hangve /chotdi /chothoan /kiemkho /kho)
 EXT_CB = {}     # tiền tố callback -> fn(cq, parts)
 EXT_REPLY = {}  # loại câu hỏi chờ trả lời -> fn(m, p)
+EXT_PRIV = {}   # lệnh dùng được khi nhắn riêng bot -> fn(m, arg)
+EXT_TEXT = []   # fn(m) -> True nếu đã nhận tin chữ/ảnh trong chat riêng (phiếu của module khác)
+EXT_BAN = []    # fn(uid) -> True nếu người này đang dở phiếu của module khác
+EXT_START = {}  # /start <mã> (nút mở chat riêng) -> fn(m, arg)
 EXT_NHOM = {}   # lệnh -> các biến env nhóm được dùng (vd ("CH_CHAT_ID",)); không khai = mọi nhóm của bot
 TEN_NHOM = {"CHAT_ID": "Kho hàng về & restock", "TICKET_CHAT_ID": "Đổi trả CS-Kho", "CH_CHAT_ID": "CS & Cửa hàng"}
 
@@ -1116,7 +1120,8 @@ def on_update(u):
     if par and f"{chat}:{par['message_id']}" in PEND:
         JOBS.put(u); return True
     if typ == "private":
-        if uid in WIZ or lenh in LENH or str(uid) != str(E.get("OWNER_TELE_ID", "")):
+        if (uid in WIZ or lenh in LENH or lenh in EXT_PRIV or str(uid) != str(E.get("OWNER_TELE_ID", ""))
+                or any(f(uid) for f in EXT_BAN)):
             JOBS.put(u); return True
         return False
     if chat == tchat() and lenh in LENH:
@@ -1191,9 +1196,17 @@ def handle(u):
                 wiz_text(uid, text)
             return
         return wiz_text(uid, text)
+    if private and not lenh and uid not in WIZ:
+        for f in EXT_TEXT:
+            if f(m):
+                return
     if private and not is_member(uid):
         return tsend(chat, "Bot này chỉ làm việc trong nhóm của The Orbit. Bạn cần được thêm vào nhóm "
                            "<b>The Orbit · Đổi trả</b> trước.")
+    if private and lenh in EXT_PRIV:
+        return EXT_PRIV[lenh](m, arg)
+    if lenh == "/start" and arg.split("_")[0] in EXT_START:
+        return EXT_START[arg.split("_")[0]](m, arg)
     if lenh == "/start" and arg.startswith("tk_") and arg[3:] in LOAI:
         return wiz_start(uid, chat, arg[3:], ten(m.get("from")))
     loai = lenh.lstrip("/")

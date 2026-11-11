@@ -1,21 +1,35 @@
-# /chi /thu cần ảnh + /day ghi bài dạy
+# /chi /thu cần ảnh + /day hỏi ngược 6 câu (tư duy bậc 2) + chủ shop duyệt/hỏi lại
 la cs
 ch: /moca 1tr
 ch: /chi 35k ship grab
 tra không có ảnh
 tra anh
 anh /chi 20k nước
-ch: /thu 25k khách trả ship
 ch: /ketca\
-Két đếm: 1.000.000\
+Két đếm: 945.000\
 Thu tiền mặt: 0
+# ---- dạy bot ----
 la kho
-kho: /day
-kho: /day hàng về thiếu từ 5 cái thì báo Huyền
-anh /day mẫu /kiemkho thêm cột vị trí kệ
-kho: /dangday
-la kho
+kho: /day hàng về thiếu nhiều thì báo Huyền
+bam 1
+rieng: hàng về
+rieng: khi kho gõ /hangve mà số thực tế ít hơn bill
+rieng: báo riêng Huyền và chủ shop kèm danh sách SKU thiếu, có nút Đã báo NCC
+rieng: để kịp đòi NCC
+rieng: để đòi NCC bù hàng trong 24h, quá hạn NCC không nhận
+rieng: khi thiếu nhiều
+rieng: khi tổng thiếu từ 5 cái trở lên, mọi kho, mọi NCC
+rieng: không
+rieng: không có vì mọi lần nhập đều cần đối chiếu bill
+rieng: bill 20 về 14
+rieng: bill 20 về 14 thiếu 6 → báo\
+bill 20 về 18 thiếu 2 → không báo
 bam 1
 la chu
-bam 1 @12
-xem dạy
+bam 2
+tra thiếu 5 cái tính theo từng SKU hay tổng cả phiếu?
+la kho
+tra tổng cả phiếu nhập
+la chu
+bam 1
+kho: /dangday
