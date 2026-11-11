@@ -161,6 +161,7 @@ import kho_flow  # noqa: E402,F401
 import cua_hang  # noqa: E402,F401
 import day_bot  # noqa: E402,F401
 day_bot.DRAFT_F = os.path.join(SAN, "day_nhap.json")
+day_bot.SU_KIEN = os.path.join(SAN, "day_su_kien.log")
 
 import nhanh as NH  # noqa: E402
 import types  # noqa: E402

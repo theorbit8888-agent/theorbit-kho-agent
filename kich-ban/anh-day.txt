@@ -14,16 +14,9 @@ kho: /day hàng về thiếu nhiều thì báo Huyền
 bam 1
 rieng: hàng về
 rieng: khi kho gõ /hangve mà số thực tế ít hơn bill
-rieng: báo riêng Huyền và chủ shop kèm danh sách SKU thiếu, có nút Đã báo NCC
-rieng: để kịp đòi NCC
-rieng: để đòi NCC bù hàng trong 24h, quá hạn NCC không nhận
-rieng: khi thiếu nhiều
-rieng: khi tổng thiếu từ 5 cái trở lên, mọi kho, mọi NCC
+rieng: báo Huyền khi thiếu nhiều
+rieng: báo riêng Huyền và chủ shop khi tổng thiếu từ 5 cái trở lên
 rieng: không
-rieng: không có vì mọi lần nhập đều cần đối chiếu bill
-rieng: bill 20 về 14
-rieng: bill 20 về 14 thiếu 6 → báo\
-bill 20 về 18 thiếu 2 → không báo
 bam 1
 la chu
 bam 2

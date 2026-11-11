@@ -3,8 +3,8 @@
 Bot KHÔNG tự sửa code: bài đã duyệt do Claude Code trên máy chủ shop xử lý (xem CLAUDE.md "DẠY BOT").
 
   /day [ý muốn dạy]   (trong nhóm → bot mở chat riêng; hoặc nhắn riêng bot)
-    → bot hỏi ngược 6 câu: tình huống · bot nên làm gì · vì sao · quy tắc chung (con số) · ngoại lệ · ví dụ
-      câu trả lời mơ hồ ("nhiều", "khi cần", quá ngắn, ví dụ thiếu) → bot bắt nói rõ
+    → bot hỏi 3 câu: khi nào · bot làm gì (có số thì ghi số) · ngoại lệ
+      câu quá ngắn / "nhiều" mà không có số → bot hỏi lại 1 lần, sau đó nhận
     → người dạy xem lại, bấm Gửi → bảng "DB · DẠY BOT" + chủ shop nhận thẻ: 👍 Duyệt làm · ❓ Hỏi lại · ❌ Không làm
   /dangday   xem các bài chưa xong
 CLI (Claude Code dùng):
@@ -24,22 +24,28 @@ import ticket as TK  # noqa: E402
 
 BANG = "DB · DẠY BOT"
 CAU = [
-    ("Tình huống", "1/6 · <b>TÌNH HUỐNG</b>: chuyện này xảy ra khi nào? (ở bước/lệnh nào, ai đang làm, lúc nào)"),
-    ("Bot nên làm gì", "2/6 · <b>BOT NÊN LÀM GÌ</b>: cụ thể bot nói/làm gì, báo cho ai, có nút gì?"),
-    ("Vì sao", "3/6 · <b>VÌ SAO</b>: mục đích là gì, không làm thì hậu quả gì? "
-               "(bot dựa vào đây để tự áp dụng cho trường hợp giống mà bạn chưa kể)"),
-    ("Quy tắc chung", "4/6 · <b>QUY TẮC CHUNG</b>: áp dụng cho MỌI trường hợp nào? Ghi rõ con số/ngưỡng "
-                      "(từ 5 cái, quá 2 giờ, mọi sàn hay chỉ TikTok, mọi kho hay chỉ Q2…)"),
-    ("Ngoại lệ", "5/6 · <b>NGOẠI LỆ</b>: khi nào KHÔNG làm vậy hoặc làm khác? (combo, hàng tặng, hoả tốc, cuối tuần, "
-                 "hàng lỗi…). Không có thì ghi \"không có vì …\""),
-    ("Ví dụ", "6/6 · <b>VÍ DỤ THẬT</b>: 1 ví dụ PHẢI áp dụng và 1 ví dụ KHÔNG áp dụng (mỗi ví dụ 1 dòng)"),
+    ("Tình huống", "1/3 · <b>KHI NÀO</b>: tình huống nào bot cần làm khác? (ở lệnh/bước nào)"),
+    ("Bot nên làm gì", "2/3 · <b>BOT LÀM GÌ</b>: bot nên làm/báo gì, cho ai? Có ngưỡng thì ghi số (vd thiếu từ 5 cái)"),
+    ("Ngoại lệ", "3/3 · <b>NGOẠI LỆ</b>: có trường hợp nào KHÔNG làm vậy không? (không có thì gõ \"không\")"),
 ]
-COLS = ["Mã", "Ngày", "Người dạy", "Telegram ID", "Nhóm"] + [c for c, _ in CAU] + \
+COLS = ["Mã", "Ngày", "Người dạy", "Telegram ID", "Nhóm", "Tình huống", "Bot nên làm gì", "Vì sao", "Quy tắc chung",
+        "Ngoại lệ", "Ví dụ"] + \
        ["Ảnh", "Ảnh (xem)", "Trạng thái", "Chủ shop", "Trao đổi", "Kết quả"]
 CHO, HOI, DUYET, XONG, KHONG = "Chờ chủ shop", "Chờ người dạy trả lời", "Đã duyệt — chờ làm", "Đã áp dụng", "Không làm"
 MO_HO = ["tuỳ", "tùy", "khi cần", "nhiều", "ít", "lâu", "gấp", "thường", "hay bị", "sớm", "muộn", "đôi khi",
          "một số", "vài", "khoảng", "chắc", "có thể"]
 DRAFT_F = os.path.join(TK.ROOT, "logs", "day", "nhap.json")
+SU_KIEN = os.path.join(TK.ROOT, "logs", "day", "su_kien.log")   # Claude Code trên máy Mac theo dõi file này
+
+
+def ghi_su_kien(loai, r):
+    try:
+        os.makedirs(os.path.dirname(SU_KIEN), exist_ok=True)
+        with open(SU_KIEN, "a") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M} {loai} {r.get('Mã')} | {r.get('Người dạy')} | "
+                    f"{str(r.get('Bot nên làm gì') or '')[:150]}\n")
+    except Exception as e:
+        print("day_bot: ghi sự kiện lỗi", e, flush=True)
 esc, tsend, tedit, answer, ten = TK.esc, TK.tsend, TK.tedit, TK.answer, TK.ten
 
 
@@ -95,25 +101,15 @@ def nut_chu(ma):
 
 # ---------------- kiểm tra câu trả lời ----------------
 def kiem(cot, t):
-    """None = được; ngược lại câu nhắc nói rõ hơn."""
-    w = len(t.split())
-    low = " " + t.lower() + " "
+    """None = được; ngược lại câu nhắc nói rõ hơn (chỉ hỏi lại 1 lần mỗi câu)."""
     if cot == "Ngoại lệ":
-        if re.fullmatch(r"\s*(không|ko|k|không có|ko có)\s*\.?\s*", t.lower()):
-            return "Ghi \"không có vì …\" — nói vì sao không có ngoại lệ (để chắc là đã nghĩ tới combo, hàng tặng, hoả tốc…)."
-        return None if w >= 4 else "Ngắn quá — nói rõ trường hợp nào làm khác."
-    if w < 4:
-        return "Ngắn quá — nói rõ hơn để bot làm đúng mà không phải đoán."
-    if cot == "Quy tắc chung":
-        mh = [x for x in MO_HO if f" {x} " in low or f" {x}," in low or f" {x}." in low]
-        if mh and not re.search(r"\d", t):
-            return f"\"{mh[0]}\" là bao nhiêu? Ghi con số cụ thể (vd: từ 5 cái, quá 2 giờ, sau 3 ngày)."
-    if cot == "Vì sao" and w < 6:
-        return "Nói rõ mục đích/hậu quả — bot dựa vào lý do để xử lý cả trường hợp bạn chưa kể."
-    if cot == "Ví dụ":
-        dong = [x for x in re.split(r"\n|;", t) if x.strip()]
-        if len(dong) < 2 and " không " not in low:
-            return "Cần 2 ví dụ: 1 ví dụ PHẢI áp dụng và 1 ví dụ KHÔNG áp dụng (mỗi cái 1 dòng)."
+        return None
+    if len(t.split()) < 3:
+        return "Nói rõ hơn chút để bot làm đúng."
+    low = " " + t.lower() + " "
+    mh = [x for x in MO_HO if f" {x} " in low or f" {x}," in low or f" {x}." in low]
+    if cot == "Bot nên làm gì" and mh and not re.search(r"\d", t):
+        return f"\"{mh[0]}\" là bao nhiêu? Ghi con số (vd từ 5 cái, quá 2 giờ)."
     return None
 
 
@@ -126,7 +122,7 @@ def bat_dau(m, seed=""):
     d[uid] = {"buoc": 0, "data": {}, "nhom": nhom or "chat riêng", "ten": ten(u), "anh": d.get(uid, {}).get("anh", "")}
     d[uid]["seed"] = seed
     luu_nhap(d)
-    tsend(uid, "📚 <b>Dạy bot</b> — bot hỏi 6 câu để hiểu đúng và áp dụng được cho cả trường hợp tương tự.\n"
+    tsend(uid, "📚 <b>Dạy bot</b> — bot hỏi 3 câu ngắn.\n"
                "Trả lời từng tin (bấm trả lời hoặc gõ thẳng). Gõ <code>huỷ</code> để dừng."
                + (f"\nÝ ban đầu: <i>{esc(seed)}</i>" if seed else ""))
     hoi_tiep(uid)
@@ -173,8 +169,9 @@ def tra_loi(m, p=None):
         tsend(int(uid), "Bấm 📤 Gửi chủ shop hoặc ✏️ Làm lại ở tin xem lại.")
         return True
     cot = CAU[w["buoc"]][0]
-    loi = kiem(cot, t)
+    loi = kiem(cot, t) if cot not in w.setdefault("da_hoi", []) else None
     if loi:
+        w["da_hoi"].append(cot); luu_nhap(d)
         TK.prompt(int(uid), m.get("message_id"), uid, "day_q", {"id": int(uid), "first_name": w["ten"]},
                   f"🤔 {loi}\n\n" + CAU[w["buoc"]][1])
         return True
@@ -204,7 +201,8 @@ def gui(uid, u):
         except BaseException as e:
             print("day_bot: ảnh lỗi", e, flush=True)
     tsend(int(uid), f"📤 Đã gửi bài dạy <b>{ma}</b> cho chủ shop. Có câu hỏi thêm bot sẽ nhắn bạn ở đây.")
-    bao_chu(r, "\n\nDuyệt xong: nhắn Claude <b>\"xử lý bài dạy\"</b> trên máy Mac.")
+    ghi_su_kien("MOI", r)
+    bao_chu(r, "\n\n👍 Duyệt là Claude cập nhật bot nhóm test luôn, xong báo anh/chị + người dạy để test.")
 
 
 def bao_chu(r, them=""):
@@ -257,7 +255,7 @@ def cmd_day(m, arg):
                            "anh": max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"] if m.get("photo") else ""}
     luu_nhap(d)
     bot = TK.me().get("username", "")
-    tsend(chat, f"📚 {esc(ten(u))}: bấm nút để dạy bot trong chat riêng (bot hỏi 6 câu cho rõ, không làm loãng nhóm).",
+    tsend(chat, f"📚 {esc(ten(u))}: bấm nút để dạy bot trong chat riêng (3 câu ngắn, không làm loãng nhóm).",
           [[{"text": "📚 Dạy bot (chat riêng)", "url": f"https://t.me/{bot}?start=day"}]], reply_to=m["message_id"])
 
 
@@ -308,13 +306,14 @@ def on_cb(cq, p):
         return answer(cq, f"Bài này đang: {r.get('Trạng thái')}")
     duyet(r, kind == "ok", ten(u))
     answer(cq, r["Trạng thái"])
-    tedit(c, mid, the(r) + ("\n\n➡️ Nhắn Claude <b>\"xử lý bài dạy\"</b> trên máy Mac." if kind == "ok" else ""))
+    tedit(c, mid, the(r) + ("\n\n➡️ Claude đang cập nhật bot, xong sẽ báo để test." if kind == "ok" else ""))
 
 
 def duyet(r, ok, ai, send=True):
     upd(r, {"Trạng thái": DUYET if ok else KHONG, "Chủ shop": f"{ai} {datetime.now():%H:%M %d/%m}"})
+    ghi_su_kien("DUYET" if ok else "KHONG", r)
     if send:
-        bao_nguoi_day(r, f"📚 Bài dạy {esc(r['Mã'])}: chủ shop <b>{'đã duyệt, sắp cập nhật bot' if ok else 'chưa làm lúc này'}</b>.")
+        bao_nguoi_day(r, f"📚 Bài dạy {esc(r['Mã'])}: chủ shop <b>{'đã duyệt, bot đang được cập nhật — xong sẽ báo bạn test' if ok else 'chưa làm lúc này'}</b>.")
 
 
 def on_chuhoi(m, p):
