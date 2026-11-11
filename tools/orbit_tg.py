@@ -503,7 +503,7 @@ def save_file(blob, name):
 
 # ======================= nghe tin (listener) =======================
 
-def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset", pre=None):
+def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset", pre=None, nghe_chu=()):
     """Long-polling Telegram. Lưu mọi tin; gọi on_job(job) khi tin gọi bot: tag @bot, trả lời tin của bot,
     lệnh /..., hoặc nhắn riêng (chỉ người trong allow_users). Nhóm ngoài allow_chats: bỏ qua (trừ /chatid).
     pre(update) -> True: update đã được module khác nhận (VD ticket.py: nút bấm, phiếu nhắn riêng), bỏ qua ở đây.
@@ -514,6 +514,7 @@ def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset", pre=None):
     off = int(open(stf).read().strip() or 0) if os.path.exists(stf) else 0
     allow_chats = {str(c) for c in allow_chats if c}
     allow_users = {str(u) for u in allow_users if u}
+    nghe_chu = {str(c) for c in nghe_chu if c}   # nhóm mà tin của chủ shop (allow_users) luôn gọi bot, không cần tag
     print(f"Đang nghe Telegram {uname_} — nhóm: {', '.join(sorted(allow_chats)) or '(chưa có)'}", flush=True)
     while True:
         r = api("getUpdates", {"offset": off, "timeout": 50,
@@ -557,7 +558,8 @@ def poll(on_job, allow_chats, allow_users=(), state_name="tg_offset", pre=None):
                 par = m.get("reply_to_message") or {}
                 lenh = low.split()[0] if low.startswith("/") else ""
                 goi = uname_ in low or ((par.get("from") or {}).get("id") == me["id"]) or \
-                    (lenh and ("@" not in lenh or lenh.endswith(uname_)))
+                    (lenh and ("@" not in lenh or lenh.endswith(uname_))) or \
+                    (chat in nghe_chu and sender in allow_users)
                 if not goi:
                     continue
             on_job({"id": mk(chat, m["message_id"]), "chat": chat, "chat_type": "p2p" if typ == "private" else "group",

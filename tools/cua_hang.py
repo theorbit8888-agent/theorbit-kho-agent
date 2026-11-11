@@ -524,6 +524,16 @@ if __name__ == "__main__":
     a = sys.argv[1:] or ["help"]
     if a[0] == "setup":
         setup(); print("đã tạo bảng", KET, CK, VIEC, CS)
+    elif a[0] == "doanhthu":   # JSON doanh thu từng lần kết ca (cho bot HCNS xếp rank NVBH): doanhthu YYYY-MM-DD YYYY-MM-DD
+        import json as _j
+        tu, den = (a[1], a[2]) if len(a) > 2 else (ngay(), ngay())
+        out = []
+        for r in rows(KET):
+            if r.get("Loại") != "Kết ca" or not (tu <= str(r.get("Ngày", ""))[:10] <= den):
+                continue
+            tong = sum(TK.tien(r.get(k)) for k in ("Thu TM", "Thu CK", "Thu thẻ"))
+            out.append({"ngay": str(r.get("Ngày"))[:10], "gio": str(r.get("Giờ", "")), "tong": tong, "nguoi": r.get("Người", "")})
+        print(_j.dumps(out, ensure_ascii=False))
     elif a[0] == "hen":
         hen("--send" in a)
     elif a[0] == "soCK":
