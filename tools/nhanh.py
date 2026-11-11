@@ -286,8 +286,32 @@ def bao_loi(msg):
     _ghi("meta.json", m)
 
 
+def gmv_nv(tu, den):
+    """GMV bán lẻ theo người bán từ hoá đơn Nhanh (/pos/bill/index): NV bán hàng nếu có gắn, không thì người tạo
+    hoá đơn (NVBH đứng quầy). Hoá đơn trả trừ ra. -> {tên đầy đủ: {"gmv", "hd"}}; ghi thêm logs/nhanh/gmv_nv.json."""
+    out = {}
+    with Phien() as ph:
+        for b in ph.pages("/pos/bill/index", max_pages=60, fromDate=tu, toDate=den):
+            i = b.get("info") or {}
+            ai = (i.get("saleName") or i.get("createdByName") or "").strip()
+            if not ai:
+                continue
+            tien = float((b.get("payment") or {}).get("totalAmount") or 0)
+            dau = -1 if "trả" in str(i.get("typeName", "")).lower() else 1
+            x = out.setdefault(ai, {"gmv": 0.0, "hd": 0})
+            x["gmv"] += dau * tien; x["hd"] += 1
+    _ghi("gmv_nv.json", {"tu": tu, "den": den, "luc": datetime.now().strftime("%Y-%m-%d %H:%M"), "nv": out})
+    return out
+
+
 if __name__ == "__main__":
     a = sys.argv[1:] or ["help"]
+    if a[0] == "gmv":   # nhanh.py gmv YYYY-MM-DD YYYY-MM-DD -> JSON (bot HCNS xếp rank NVBH)
+        try:
+            print(json.dumps(gmv_nv(a[1], a[2]), ensure_ascii=False))
+        except CanDangNhap as e:
+            print(json.dumps({"_loi": "chua_dang_nhap"})); sys.exit(2)
+        sys.exit(0)
     if a[0] == "login":
         sys.exit(0 if login() else 1)
     elif a[0] == "sync":
