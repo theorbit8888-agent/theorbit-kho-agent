@@ -57,3 +57,10 @@ Bạn là **agent kho** của The Orbit (thời trang, bán TikTok Shop + Shopee
 ## SÂN THỬ (cho team / Claude của team)
 - `python3 tools/san_thu.py [kich-ban/x.txt]`: Telegram + Sheet giả, dữ liệu ở `logs/san-thu/`. Sửa luồng nào thì viết/chạy kịch bản trong `kich-ban/` trước và sau khi sửa.
 - Không chạy `tools/listener.py` trên máy team; không đụng `~/.config/orbit-kho/`.
+
+## DẠY BOT (/day) — quy trình khi chủ shop nhắn "xử lý bài dạy"
+- Team gõ `/day ...` trong nhóm → bảng `DB · DẠY BOT`, chủ shop bấm 👍 Duyệt làm. Bot KHÔNG tự sửa code.
+- Claude Code (máy chủ shop): `python3 tools/day_bot.py ds` → chỉ làm bài trạng thái "Đã duyệt — chờ làm".
+- Mỗi bài: sửa nhỏ nhất (knowledge/ trước, rồi tools/), thêm kịch bản `kich-ban/`, chạy sân thử + `kich-ban/day-du.txt`,
+  báo chủ shop tóm tắt trước khi cập nhật bot thật; xong: commit + push, chạy `tools/install_launchd.sh`,
+  rồi `python3 tools/day_bot.py xong <Mã> "đã sửa gì" --send` để báo người dạy.

@@ -1,0 +1,21 @@
+# /chi /thu cần ảnh + /day ghi bài dạy
+la cs
+ch: /moca 1tr
+ch: /chi 35k ship grab
+tra không có ảnh
+tra anh
+anh /chi 20k nước
+ch: /thu 25k khách trả ship
+ch: /ketca\
+Két đếm: 1.000.000\
+Thu tiền mặt: 0
+la kho
+kho: /day
+kho: /day hàng về thiếu từ 5 cái thì báo Huyền
+anh /day mẫu /kiemkho thêm cột vị trí kệ
+kho: /dangday
+la kho
+bam 1
+la chu
+bam 1 @12
+xem dạy

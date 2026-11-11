@@ -27,7 +27,7 @@ import nhanh as NH  # noqa: E402
 
 KET = "CH · SỔ KÉT"
 KET_COLS = ["Ngày", "Giờ", "Loại", "Người", "Số tiền", "Nội dung", "Loại chi", "Két đếm", "Két phải có", "Lệch",
-            "Thu TM", "Thu CK", "Thu thẻ", "Ca"]
+            "Thu TM", "Thu CK", "Thu thẻ", "Ca", "Ảnh", "Ảnh (xem)"]
 CK = "CH · CHUYỂN KHOẢN"
 CK_COLS = ["Ngày", "Giờ", "Mã đơn", "Số tiền", "Lý do", "Người gửi", "Ảnh", "Ảnh (xem)", "Chủ shop xác nhận"]
 VIEC = "CH · VIỆC"
@@ -137,12 +137,39 @@ def chi(m, arg, loai="Chi"):
                      "Gõ <code>/thu 25k khách trả tiền ship</code> — chỉ tiền mặt <b>ngoài bán hàng</b> "
                      "(tiền bán hàng ghi 1 lần ở /ketca).",
                      reply_to=m["message_id"])
-    add(KET, {"Ngày": ngay(), "Giờ": now().strftime("%H:%M"), "Loại": loai, "Người": who, "Số tiền": n,
-              "Nội dung": p[1], "Loại chi": loai_chi(p[1]) if loai == "Chi" else ""})
+    fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"] if m.get("photo") else ""
+    rid = add(KET, {"Ngày": ngay(), "Giờ": now().strftime("%H:%M"), "Loại": loai, "Người": who, "Số tiền": n,
+                    "Nội dung": p[1], "Loại chi": loai_chi(p[1]) if loai == "Chi" else "", "Ảnh": "tg:" + fid if fid else ""})
+    if fid:
+        luu_anh(rid, fid)
     phai, _, _, _ = ket_phai_co()
     tsend(c, f"{'🔻 Chi' if loai == 'Chi' else '🔺 Thu ngoài bán hàng'} {tien(n)} — {esc(p[1])}"
-             + (f" <i>({loai_chi(p[1])})</i>" if loai == "Chi" else "") + f"\nKét phải có: <b>{tien(phai)}</b>",
-          reply_to=m["message_id"])
+             + (f" <i>({loai_chi(p[1])})</i>" if loai == "Chi" else "") + (" 📷" if fid else "")
+             + f"\nKét phải có: <b>{tien(phai)}</b>", reply_to=m["message_id"])
+    if not fid:
+        TK.prompt(c, m["message_id"], rid, "ch_anh", m.get("from") or {},
+                  f"📷 {esc(who)} trả lời tin này bằng <b>ảnh hoá đơn / chứng từ</b> cho khoản {tien(n)} "
+                  "(lần sau gửi ảnh kèm chú thích /chi ... là xong 1 bước).")
+
+
+def luu_anh(rid, fid):
+    try:
+        TG.xem_anh(KET, rid, "Ảnh", TG.download(fid))
+    except BaseException as e:
+        print("cua_hang: ảnh két lỗi", e, flush=True)
+
+
+def on_reply(m, p):
+    c = m["chat"]["id"]
+    if p["f"] == "ch_anh":
+        if not m.get("photo"):
+            return TK.prompt(c, m["message_id"], p["id"], "ch_anh", m.get("from") or {},
+                             f"Cần <b>ảnh</b>: {esc(ten(m.get('from')))} trả lời tin này bằng ảnh hoá đơn.")
+        fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"]
+        TG.kho("update", table=TG.sname(KET), id=p["id"], fields={"Ảnh": "tg:" + fid})
+        TG._CACHE.pop(TG.sname(KET), None)
+        luu_anh(p["id"], fid)
+        tsend(c, "✅ Đã gắn ảnh vào khoản thu/chi.", reply_to=m["message_id"])
 
 
 def thu(m, arg):
@@ -186,6 +213,10 @@ def ketca(m, arg):
            f"<b>tổng thu {tien(v.get('tm', 0) + v.get('ck', 0) + v.get('the', 0))}</b>")
     if chis:
         t += "\nChi trong ca: " + "; ".join(f"{tien(r.get('Số tiền'))} {esc(r.get('Nội dung'))}" for r in chis[:12])
+        thieu = [r for r in chis if not r.get("Ảnh")]
+        if thieu:
+            t += (f"\n📷 <b>{len(thieu)} khoản chi chưa có ảnh</b>: " + "; ".join(
+                f"{tien(r.get('Số tiền'))} {esc(r.get('Nội dung'))}" for r in thieu[:8]) + " — gửi bổ sung ảnh ngay.")
     tsend(c, t, reply_to=m["message_id"])
     if lech:
         for o in TK.duyet_ids():
@@ -473,6 +504,7 @@ TK.EXT_NHOM.update({k: ("CH_CHAT_ID",) for k in ("/moca", "/chi", "/thu", "/ketc
                                                    "/goi", "/chotca")})
 TK.EXT_NHOM.update({k: ("CHAT_ID", "TICKET_CHAT_ID", "CH_CHAT_ID") for k in ("/note", "/hoatoc")})
 TK.EXT_CB["ch"] = on_cb
+TK.EXT_REPLY.update({"ch_anh": on_reply})
 
 if __name__ == "__main__":
     import lark as Lk

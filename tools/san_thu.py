@@ -16,7 +16,7 @@ HƯỚNG DẪN (mỗi dòng):
   rieng: ...              nhắn riêng với bot
   la cs | la kho | la chu | la la     đổi người đang gõ (CS Mai / Kho Tuấn / Chủ shop / người lạ)
   bam 2                   bấm nút số 2 của tin có nút gần nhất (bam 2 @3 = nút 2 của tin #3)
-  tra <nội dung>          trả lời (reply) tin bot vừa hỏi "trả lời tin này"
+  tra <nội dung>          trả lời (reply) tin bot vừa hỏi "trả lời tin này" (tra anh = trả lời bằng ảnh)
   anh [chú thích]         gửi 1 ảnh (giả) vào nhóm đang đứng, có thể kèm lệnh: anh /hoan SPX123
   xem <tên bảng>          in dữ liệu 1 bảng (xem = liệt kê các bảng)
   # ...                   ghi chú, bỏ qua
@@ -159,6 +159,7 @@ Lk.load_env = lambda: dict(ENV)
 import ticket as TK  # noqa: E402
 import kho_flow  # noqa: E402,F401
 import cua_hang  # noqa: E402,F401
+import day_bot  # noqa: E402,F401
 
 import nhanh as NH  # noqa: E402
 import types  # noqa: E402
@@ -260,7 +261,10 @@ def dong(line):
     if cmd == "bam":
         return bam(rest)
     if cmd == "tra":
-        return gui(rest, reply=CUOI["hoi"].get(str(DANG["chat"])))
+        r = CUOI["hoi"].get(str(DANG["chat"]))
+        if rest == "anh" or rest.startswith("anh "):
+            return gui(rest[4:] or None, photo=True, reply=r)
+        return gui(rest, reply=r)
     if cmd == "anh":
         return gui(rest or None, photo=True)
     if cmd == "xem":
