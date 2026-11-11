@@ -26,7 +26,7 @@ import orbit_tg as TG  # Telegram + Google Sheet thay Lark (xem đầu file orbi
 from datetime import date, datetime, timedelta
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-ENV = os.path.expanduser("~/.config/orbit-kho/lark.env")
+ENV = os.path.expanduser(os.environ.get("ORBIT_KHO_ENV", "~/.config/orbit-kho/lark.env"))  # team dev: trỏ sang file env thử
 API = "https://open.larksuite.com/open-apis"
 WIKI_TOKEN = "YZtmwmmGYiL24ZkseBRl2Kn3gng"  # THE ORBIT — Product Launch & Restock
 
