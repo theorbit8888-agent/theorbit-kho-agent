@@ -94,6 +94,7 @@ ME = {}
 EXT_CMDS = {}   # lệnh -> fn(m, arg)        (kho_flow.py đăng ký: /hangve /chotdi /chothoan /kiemkho /kho)
 EXT_CB = {}     # tiền tố callback -> fn(cq, parts)
 EXT_REPLY = {}  # loại câu hỏi chờ trả lời -> fn(m, p)
+ALBUM = {}      # media_group_id -> (lệnh, lúc): ảnh 2,3… của 1 album gửi kèm /hoan, /chothoan
 EXT_PRIV = {}   # lệnh dùng được khi nhắn riêng bot -> fn(m, arg)
 EXT_TEXT = []   # fn(m) -> True nếu đã nhận tin chữ/ảnh trong chat riêng (phiếu của module khác)
 EXT_BAN = []    # fn(uid) -> True nếu người này đang dở phiếu của module khác
@@ -989,14 +990,44 @@ def log_hoan(ma, who, ticket="", tt="", fid=""):
     return row
 
 
+def doc_ma_anh(m, chu=False):
+    """Mã vạch/QR trên ảnh (tem vận đơn). Ảnh nén của Telegram vẫn đọc được tem chụp gần."""
+    try:
+        import mavach
+        fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"]
+        return mavach.doc(TG.download(fid), chu=chu)
+    except Exception as e:
+        print("ticket: đọc mã vạch lỗi", e, flush=True)
+        return []
+
+
+def da_quet(ma):
+    """Kiện này kho đã quét /hoan rồi (bảng 09 có người nhận)?"""
+    return next((r for r in TG.rows(HOAN, fresh=True)
+                 if str(r.get("MVĐ", "")).lower() == ma.lower() and r.get("Người nhận")), None)
+
+
 def cmd_hoan(m, arg):
     """Kho nhận kiện hoàn. 1 mã: chọn tình trạng. Nhiều mã (mỗi dòng 1 MVĐ): ghi hết là nguyên vẹn,
-    kiện nào thuộc ticket CS thì hỏi tình trạng riêng."""
+    kiện nào thuộc ticket CS thì hỏi tình trạng riêng. Kiện đã quét rồi thì bỏ qua + báo."""
     chat, u = m["chat"]["id"], m.get("from") or {}
     who = ten(u)
-    mas = ma_list(arg)
+    mas = []
+    for x in ma_list(arg):
+        if x.lower() not in {y.lower() for y in mas}:
+            mas.append(x)
+    trung = [(x, da_quet(x)) for x in mas]
+    trung = [(x, r) for x, r in trung if r and not find(x, open_only=True)]
+    if trung:
+        tsend(chat, "♻️ Đã quét rồi, bỏ qua: " + ", ".join(
+            f"<code>{esc(x)}</code> ({esc(r.get('Người nhận'))} {esc(str(r.get('Ngày', ''))[5:])})" for x, r in trung),
+            reply_to=m["message_id"])
+        mas = [x for x in mas if x not in {t[0] for t in trung}]
+        if not mas:
+            return
     if not mas:
-        return tsend(chat, "Gõ <code>/hoan MVĐ</code> (nhiều kiện: mỗi dòng 1 MVĐ). Chụp kiện thì để lệnh ở chú thích ảnh.",
+        return tsend(chat, "📷 Nhanh nhất: <b>chụp tem vận đơn</b>, chú thích <code>/hoan</code> — bot tự đọc mã "
+                           "(chụp nhiều tem 1 ảnh hoặc gửi nhiều ảnh 1 lần đều được). Hoặc gõ <code>/hoan MVĐ</code>.",
                      reply_to=m["message_id"])
     fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"] if m.get("photo") else ""
     if len(mas) == 1:
@@ -1119,6 +1150,11 @@ def on_update(u):
     par = m.get("reply_to_message")
     if par and f"{chat}:{par['message_id']}" in PEND:
         JOBS.put(u); return True
+    mg = m.get("media_group_id")
+    if mg and lenh in ("/hoan", "/chothoan"):
+        ALBUM[mg] = (lenh, time.time())
+    elif mg and not lenh and mg in ALBUM and time.time() - ALBUM[mg][1] < 120:
+        JOBS.put(u); return True
     if typ == "private":
         if (uid in WIZ or lenh in LENH or lenh in EXT_PRIV or str(uid) != str(E.get("OWNER_TELE_ID", ""))
                 or any(f(uid) for f in EXT_BAN)):
@@ -1185,6 +1221,17 @@ def handle(u):
     parts = text.split(maxsplit=1)
     lenh = parts[0].lower().split("@")[0] if text.startswith("/") else ""
     arg = parts[1].strip() if len(parts) > 1 else ""
+    mg = m.get("media_group_id")
+    if not lenh and mg and mg in ALBUM:
+        lenh = ALBUM[mg][0]
+    if lenh in ("/hoan", "/chothoan") and m.get("photo") and not ma_list(arg):
+        ma_anh = doc_ma_anh(m, chu=lenh == "/chothoan")
+        if not ma_anh:
+            return tsend(chat, "📷 Chưa đọc được mã vạch trong ảnh. Chụp gần + rõ tem (mã vạch nằm ngang, đủ sáng), "
+                               "hoặc gõ mã: <code>" + lenh + " MVĐ</code>", reply_to=m["message_id"])
+        arg = "\n".join(ma_anh)
+        tsend(chat, f"📷 Đọc được {len(ma_anh)} mã: " + ", ".join(f"<code>{esc(x)}</code>" for x in ma_anh),
+              reply_to=m["message_id"])
     private = typ == "private"
     if lenh == "/huy" and uid in WIZ:
         WIZ.pop(uid, None); _save()

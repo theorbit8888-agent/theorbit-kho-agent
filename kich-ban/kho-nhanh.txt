@@ -1,0 +1,12 @@
+# Kho làm nhanh: chụp tem /hoan, chụp màn hình /chothoan, /hangve tên mẫu, /kiemkho chỉ số
+la kho
+kho: /kho
+anh file:kich-ban/tem-3-kien.jpg /hoan
+anh /hoan
+anh file:kich-ban/ds-hoan-san.jpg /chothoan
+kho: /hangve
+kho: /hangve rivet
+kho: /hangve khongcomau
+kho: /kiemkho
+kho: /kiemkho 5 6 7 8 1 2 3 4 5 6 7 8 9 10 11 12 13
+kho: /kiemkho 5 6 7

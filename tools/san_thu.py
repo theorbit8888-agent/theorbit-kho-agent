@@ -149,7 +149,8 @@ def fake_api(method, body=None, timeout=70, files=None):
 
 
 TG.api = fake_api
-TG.download = lambda fid: b"\xff\xd8\xff\xe0 anh gia san thu"
+ANH_THAT = [None]
+TG.download = lambda fid: ANH_THAT[0] or b"\xff\xd8\xff\xe0 anh gia san thu"
 TG.kho = fake_kho
 
 import re  # noqa: E402
@@ -172,7 +173,17 @@ _sp = types.SimpleNamespace(run=lambda *a, **k: print("   (sân thử: bỏ qua 
 kho_flow.subprocess = _sp
 TK.__dict__["subprocess"] = _sp
 import subprocess as _real_sp  # noqa: E402
-_real_sp.Popen = _sp.Popen
+_goc_popen = _real_sp.Popen
+
+
+class _ChanNhanh(_goc_popen):   # chỉ chặn mở Chrome Nhanh; công cụ khác (đọc mã vạch) chạy bình thường
+    def __init__(self, args, *a, **k):
+        if any("nhanh.py" in str(x) for x in (args if isinstance(args, (list, tuple)) else [args])):
+            raise RuntimeError("sân thử: bỏ qua mở Chrome Nhanh")
+        super().__init__(args, *a, **k)
+
+
+_real_sp.Popen = _ChanNhanh
 NH.bao_loi = lambda *a, **k: print("   (sân thử: Nhanh lỗi — bỏ qua báo chủ shop)")
 if "--co-nhanh" not in sys.argv:   # mặc định không dùng dữ liệu Nhanh trên máy (máy team không có)
     NH.CACHE = os.path.join(SAN, "nhanh")
@@ -268,6 +279,10 @@ def dong(line):
             return gui(rest[4:] or None, photo=True, reply=r)
         return gui(rest, reply=r)
     if cmd == "anh":
+        if rest.startswith("file:"):   # anh file:/đường/dẫn.jpg /hoan  → ảnh thật (thử đọc mã vạch)
+            duong, _, cap = rest[5:].partition(" ")
+            ANH_THAT[0] = open(os.path.expanduser(duong), "rb").read()
+            return gui(cap or None, photo=True)
         return gui(rest or None, photo=True)
     if cmd == "xem":
         return xem(rest)
