@@ -21,6 +21,9 @@ HƯỚNG DẪN (mỗi dòng):
   xem <tên bảng>          in dữ liệu 1 bảng (xem = liệt kê các bảng)
   phieu                   in phiếu điểm kho cuối ngày (bot gửi chủ shop 18h)
   nhanh-gia               nạp dữ liệu Nhanh giả (tồn + đơn 14 ngày) để thử dự báo hết hàng
+  nhanh-don               nạp 9 đơn chờ gửi giả (thử /indon /giao /doisoat)
+  nhanh-st MVĐ 59|63      giả Nhanh đồng bộ: ĐVVC đã lấy / khách huỷ
+  doisoat                 chạy đối soát chiều như lịch 17h
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   # ...                   ghi chú, bỏ qua
 Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng sau.
@@ -204,6 +207,8 @@ if "--co-nhanh" not in sys.argv:   # mặc định không dùng dữ liệu Nhan
     NH.CACHE = os.path.join(SAN, "nhanh")
 TK.STATE = os.path.join(SAN, "ticket_state.json")
 kho_flow.DH_STATE = os.path.join(SAN, "dat_hang.json")   # quyết định đặt hàng thử, không đụng file thật
+import xuat_kho  # noqa: E402
+xuat_kho.STATE = os.path.join(SAN, "xuat_kho.json")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN
 
@@ -319,6 +324,33 @@ def dong(line):
                   open(os.path.join(NH.CACHE, "orders.json"), "w"))
         json.dump({"dong_bo": time.strftime("%Y-%m-%d %H:%M")}, open(os.path.join(NH.CACHE, "meta.json"), "w"))
         return print("   (đã nạp Nhanh giả: Rivet, Redline, Archive)")
+    if cmd == "nhanh-don":   # đơn chờ gửi giả: TikTok 5 (1 chưa MVĐ, 1 tồn 30h), Shopee 3, Web 1
+        os.makedirs(NH.CACHE, exist_ok=True)
+        p = os.path.join(NH.CACHE, "orders.json")
+        od = json.load(open(p)) if os.path.exists(p) else {}
+        cu = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 30 * 3600))
+        for i, (k, mvd) in enumerate([("tiktok", "TT1001"), ("tiktok", "TT1002"), ("tiktok", "TT1003"), ("tiktok", "TT1004"),
+                                      ("tiktok", ""), ("shopee", "SPXVN2001"), ("shopee", "SPXVN2002"),
+                                      ("shopee", "SPXVN2003"), ("ngoai", "GHN3001")]):
+            oid = str(9000 + i)
+            od[oid] = {"id": oid, "kenh": k, "ma_san": f"58{9000 + i}", "mvd": mvd, "dvvc": "", "st": 42,
+                       "st_ten": "Đang đóng gói", "tao": cu if mvd == "TT1001" else time.strftime("%Y-%m-%d 08:00:00"),
+                       "cap_nhat": "", "gui_dvvc": "", "kho": "KHO TỔNG - CN QUẬN 2", "sp": [{"ma": "SO-A4-RIVET-L", "sl": 1}]}
+        json.dump(od, open(p, "w"))
+        json.dump({"dong_bo": time.strftime("%Y-%m-%d %H:%M")}, open(os.path.join(NH.CACHE, "meta.json"), "w"))
+        return print("   (đã nạp 9 đơn chờ gửi giả)")
+    if cmd == "nhanh-st":    # nhanh-st MVĐ 59|63  → giả Nhanh đồng bộ: ĐVVC đã lấy (59) / khách huỷ (63)
+        p = os.path.join(NH.CACHE, "orders.json")
+        od = json.load(open(p))
+        ma, so = rest.split()
+        for o in od.values():
+            if o["mvd"] == ma:
+                o["st"] = int(so); o["st_ten"] = {59: "Đang chuyển", 63: "Khách huỷ"}.get(int(so), so)
+                o["cap_nhat"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        json.dump(od, open(p, "w"))
+        return print(f"   (Nhanh: {ma} → {so})")
+    if cmd == "doisoat":     # chạy đối soát chiều (17h) như lịch
+        return print(re.sub(r"<[^>]+>", "", xuat_kho.bao_chieu()[0]))
     if cmd == "dubao":
         kho_flow.nhac_dat_hang(True)
         return

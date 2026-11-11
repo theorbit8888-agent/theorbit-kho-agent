@@ -911,7 +911,10 @@ def menu(m, arg):
           "chỉ điền số bill + thực tế\n\n"
           "↩️ <b>Hàng hoàn</b>: <b>chụp tem vận đơn</b>, chú thích <code>/hoan</code> → bot tự đọc mã "
           "(nhiều tem 1 ảnh / nhiều ảnh 1 lần đều được)\n\n"
-          f"🚚 <b>Chốt đơn đi</b> (17h):\n<code>{esc(MAU['chotdi'])}</code>\n\n"
+          "🖨 <b>In đơn</b>: gõ /indon → số tem cần in từng sàn, đơn chưa có MVĐ, đơn sắp quá hạn\n"
+          "🚚 <b>Giao shipper</b>: <b>chụp tem</b> (nhiều kiện 1 ảnh), chú thích <code>/giao</code> → bot so từng kiện, "
+          "đơn huỷ báo giữ lại ngay. /doisoat xem lệch bất cứ lúc nào (bot tự đối soát 17h + 9h hôm sau)\n\n"
+          f"🚚 <b>Chốt đơn đi</b> (17h, đếm tay nếu chưa quét):\n<code>{esc(MAU['chotdi'])}</code>\n\n"
           "🧾 <b>Đối soát hàng hoàn</b> (17h): chụp màn hình danh sách hoàn trên sàn, chú thích <code>/chothoan</code>\n\n"
           "🔢 <b>Kiểm kho</b>: gõ /kiemkho xem danh sách hôm nay → gõ <code>/kiemkho</code> + các số đếm theo thứ tự",
           reply_to=m["message_id"])
@@ -1024,23 +1027,29 @@ def hen(send=False):
         cb = canh_bao_nhap()
         if cb:
             out += "\n\n" + cb
+        xs = xuat_kho.bao_sang()
+        if xs:
+            out += "\n\n" + xs
         if cho:
             out += (f"\n\n↩️ <b>{len(cho)} kiện sàn báo hoàn mà kho chưa nhận</b>:\n"
                     + "\n".join(f"• <code>{esc(r.get('MVĐ'))}</code> (báo {esc(r.get('Sàn báo hoàn'))})" for r in cho[:30])
                     + "\n→ đòi shipper / khiếu nại ĐVVC")
     else:
-        da = {r.get("Sàn") for r in TG.rows(DS, fresh=True) if r.get("Ngày") == today()}
+        da = {r.get("Sàn") for r in TG.rows(DS, fresh=True) if r.get("Ngày") == today() and r.get("Người làm") != xuat_kho.BOT}
         nhan = len([r for r in TG.rows(TK.HOAN, fresh=True) if r.get("Ngày") == today() and r.get("Người nhận")])
         if h >= 18 and {"TikTok", "Shopee"} <= da:
             return print("đã chốt ca, không nhắc")
         nh = bao_nhanh_chot_ca()
         hoan_t, _ = doi_soat_hoan_nhanh()
+        xt, _ = xuat_kho.bao_chieu()
         if nh:
             out = ("🕔 <b>CHỐT CA</b>" + (" — nhắc lại, chưa thấy chốt" if h >= 18 else "")
                    + f"\nHôm nay kho đã quét {nhan} kiện hoàn.\n\n{nh}\n\n{hoan_t}\n\n"
                    "1️⃣ Đếm kiện đã bàn giao shipper (theo biên bản) rồi gửi:\n"
                    "<code>/chotdi\nTikTok \nShopee \nWeb </code>\n"
                    "2️⃣ Hàng hoàn: quét nốt kiện shipper vừa trả bằng <code>/hoan MVĐ</code>, rồi gõ /chothoan để đối soát lại.")
+            if xt:
+                out += "\n\n" + xt
         else:
             out = ("🕔 <b>CHỐT CA</b>" + (" — nhắc lại, chưa thấy chốt" if h >= 18 else "")
                    + f"\nHôm nay kho đã quét {nhan} kiện hoàn. (Chưa đọc được Nhanh — điền tay)\n\n"
@@ -1112,6 +1121,8 @@ TK.EXT_CB["kf"] = on_cb
 TK.EXT_REPLY.update({"kf_ddat": on_reply, "kf_nhanh": on_reply, "kf_lechdi": on_reply})
 if not hasattr(TK, "STATE_KF"):
     TK.STATE_KF = {}
+
+import xuat_kho  # noqa: E402  /indon /giao /doisoat: đối soát in đơn → bàn giao theo từng MVĐ
 
 if __name__ == "__main__":
     import lark as Lk

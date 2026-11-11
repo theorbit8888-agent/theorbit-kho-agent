@@ -1,0 +1,21 @@
+# In đơn → giao shipper → đối soát theo từng MVĐ
+nhanh-don
+la kho
+kho: /indon
+# khách huỷ 1 đơn Shopee sau khi đã in tem
+nhanh-st SPXVN2003 63
+# giao shipper: quét tem (gõ mã thay ảnh). SPXVN2003 đã huỷ → bot báo giữ lại
+kho: /giao TT1001 TT1002 SPXVN2001 SPXVN2002 SPXVN2003
+kho: /giao TT1001
+bam 1
+# Nhanh đồng bộ: sàn ghi nhận ĐVVC đã lấy các kiện, trừ TT1002 (shipper quên quét)
+nhanh-st TT1001 59
+nhanh-st SPXVN2001 59
+nhanh-st SPXVN2002 59
+# TT1003 sàn ghi lấy mà kho không quét
+nhanh-st TT1003 59
+kho: /doisoat
+xem SP 07 · ĐỐI SOÁT NGÀY
+# không áp dụng: mã lạ, không có lệnh
+kho: /giao XYZ999888
+kho: /giao

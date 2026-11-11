@@ -98,4 +98,5 @@ Theo `QUY_TRINH_KIEM_HANG_NHAP_KHO.md` (quy trình gốc của shop). Tóm tắt
 
 ## 7. Quy định shop đã chốt
 (Ghi khi chủ shop/trưởng kho chốt: hạn sàn đã xác minh, người duyệt hoàn, thời gian lưu video, ai nhận ca nào…)
+- **Đối soát đơn đi theo từng MVĐ** (11/11/2026): in đơn gõ `/indon` (bot chốt danh sách cần gửi từ Nhanh); giao shipper thì chụp tem chú thích `/giao` (đơn đã huỷ bot báo giữ lại ngay); 17h bot so cần gửi ↔ kho quét ↔ sàn ghi ĐVVC lấy, ghi 07; 9h hôm sau nhắc kiện đã giao mà sàn vẫn chưa ghi lấy (đòi shipper/khiếu nại ĐVVC). `/chotdi` đếm tay chỉ dùng khi chưa có Nhanh.
 - Phí đổi/trả với khách: thường shop hỗ trợ một chiều, khách chịu 25k (chủ shop chốt 02/11/2026 — từ agent CSKH).

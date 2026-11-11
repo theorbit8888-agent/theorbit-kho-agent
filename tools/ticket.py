@@ -1169,7 +1169,7 @@ def on_update(u):
     if par and f"{chat}:{par['message_id']}" in PEND:
         JOBS.put(u); return True
     mg = m.get("media_group_id")
-    if mg and lenh in ("/hoan", "/chothoan"):
+    if mg and lenh in ("/hoan", "/chothoan", "/giao"):
         ALBUM[mg] = (lenh, time.time())
     elif mg and not lenh and mg in ALBUM and time.time() - ALBUM[mg][1] < 120:
         JOBS.put(u); return True
@@ -1248,7 +1248,7 @@ def handle(u):
     mg = m.get("media_group_id")
     if not lenh and mg and mg in ALBUM:
         lenh = ALBUM[mg][0]
-    if lenh in ("/hoan", "/chothoan") and m.get("photo") and not ma_list(arg):
+    if lenh in ("/hoan", "/chothoan", "/giao") and m.get("photo") and not ma_list(arg):
         ma_anh = doc_ma_anh(m, chu=lenh == "/chothoan")
         if not ma_anh:
             return tsend(chat, "📷 Chưa đọc được mã vạch trong ảnh. Chụp gần + rõ tem (mã vạch nằm ngang, đủ sáng), "
