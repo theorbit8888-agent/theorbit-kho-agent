@@ -619,6 +619,12 @@ def on_cb(cq, p):
     chat, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
     old = cq["message"].get("text", "")
     answer(cq)
+    if kind == "dca":
+        st = dc_st()
+        i = int(key)
+        st["tick"][i] = "" if st["tick"][i] else f"{who} {datetime.now():%H:%M}"
+        TK._save()
+        return tedit(chat, mid, dc_text(st), dc_btn(st))
     if kind == "goiy":
         return goi_y_sku(chat, mid, ":".join(p[2:]))
     if kind == "ncc":
@@ -683,11 +689,94 @@ def menu(m, arg):
           reply_to=m["message_id"])
 
 
+# ======================= checklist đầu ca + phiếu điểm cuối ngày =======================
+
+DAU_CA = ["Kéo đơn sàn về Nhanh đủ (so số đơn từng Seller Center)", "Xử lý hoả tốc + đơn sắp quá hạn chuẩn bị",
+          "Đọc ghi chú đơn (/note) + thẻ việc còn treo", "Đơn hết hàng/tồn ảo đã báo CS",
+          "Kiện hoàn hôm qua đã mở kiểm hết"]
+
+
+def dc_st(ngay=None):
+    k = "dauca" + (ngay or today())
+    st = TK.STATE_KF.get(k)
+    if not st:
+        st = TK.STATE_KF[k] = {"tick": [""] * len(DAU_CA)}
+    return st
+
+
+def dc_text(st):
+    return ("☀️ <b>ĐẦU CA KHO</b> " + datetime.now().strftime("%d/%m") + " — làm xong mục nào bấm mục đó (10h bot kiểm):\n"
+            + "\n".join(f"{'✅' if t else '⬜'} {c}" + (f" <i>({esc(t)})</i>" if t else "") for c, t in zip(DAU_CA, st["tick"])))
+
+
+def dc_btn(st):
+    return [[{"text": f"{'✅' if t else '⬜'} {c[:40]}", "callback_data": f"kf:dca:{i}"}] for i, (c, t) in enumerate(zip(DAU_CA, st["tick"]))]
+
+
+def dauca(m, arg):
+    st = dc_st()
+    tsend(m["chat"]["id"], dc_text(st), dc_btn(st))
+
+
+def phieu_diem():
+    """Phiếu điểm kho cuối ngày cho chủ shop: chỉ liệt kê việc CHƯA xong / có vấn đề."""
+    hn = today()
+    L, xau = [f"📋 <b>PHIẾU ĐIỂM KHO</b> {datetime.now():%d/%m}"], 0
+
+    def dong(ok, t):
+        nonlocal xau
+        xau += 0 if ok else 1
+        L.append(("✅ " if ok else "❌ ") + t)
+    st = dc_st()
+    chua = [c for c, t in zip(DAU_CA, st["tick"]) if not t]
+    dong(not chua, "Đầu ca: " + ("đủ" if not chua else f"thiếu {len(chua)} mục — " + "; ".join(chua)))
+    ds = [r for r in TG.rows(DS, fresh=True) if r.get("Ngày") == hn]
+    san = {r.get("Sàn") for r in ds}
+    dong({"TikTok", "Shopee"} <= san, "Chốt đơn đi 17h: " + (", ".join(sorted(x for x in san if x and x != "Khác")) or "chưa chốt"))
+    dong(any(str(r.get("Ngày - Sàn", "")).endswith("Hàng hoàn") for r in ds), "Đối soát hoàn (/chothoan)")
+    hoan = TG.rows(TK.HOAN, fresh=True)
+    nhan = [r for r in hoan if r.get("Ngày") == hn and r.get("Người nhận")]
+    cho = [r for r in hoan if r.get("Sàn báo hoàn") and not r.get("Người nhận")]
+    dong(not cho, f"Hàng hoàn: hôm nay quét {len(nhan)} kiện" + (f" · <b>{len(cho)} kiện sàn báo mà chưa về</b>: "
+         + ", ".join(str(r.get("MVĐ")) for r in cho[:8]) if cho else ""))
+    kk = [r for r in TG.rows(KIEM, fresh=True) if r.get("Ngày") == hn]
+    lech = [r for r in kk if str(r.get("Lệch", "")) not in ("", "0") and not r.get("Đã điều chỉnh Nhanh")]
+    dong(bool(kk) and not lech, f"Kiểm kho: {len(kk)} SKU" + (f" · <b>{len(lech)} lệch chưa điều chỉnh</b>" if lech else "")
+         if kk else "Kiểm kho: <b>chưa làm</b>")
+    nh = [r for r in TG.rows(NHAP, fresh=True) if r.get("Ngày nhận") == hn]
+    ncc = [r for r in nh if r.get("Lệch bill") in ("Thiếu", "Thừa") and "NCC" not in str(r.get("Ghi chú", ""))]
+    chua_nh = [r for r in nh if not r.get("Đã nhập Nhanh.vn")]
+    if nh:
+        dong(not ncc and not chua_nh, f"Hàng về: {len(nh)} dòng" + (f" · {len(ncc)} lệch chưa báo NCC" if ncc else "")
+             + (f" · {len(chua_nh)} chưa nhập Nhanh" if chua_nh else ""))
+    try:
+        import cua_hang as CH
+        treo = [r for r in TG.rows(CH.VIEC, fresh=True) if r.get("Trạng thái") not in ("Xong", "Huỷ", "Hủy")]
+    except Exception:
+        treo = []
+    dong(not treo, "Thẻ việc (hoả tốc/note/gói): " + ("hết treo" if not treo else
+         f"<b>{len(treo)} còn treo</b> — " + ", ".join(f"{r.get('ID')} {r.get('Loại')}" for r in treo[:8])))
+    tk = [r for r in TK.all_rows() if r.get("Trạng thái") == "Chờ nhập kho QLBH"]
+    gt = [r for r in TK.all_rows() if str(r.get("Phạt kho", "")).startswith("Chờ")]
+    if tk or gt:
+        dong(False, (f"{len(tk)} ticket chờ kho nhập QLBH " if tk else "") + (f"· {len(gt)} lỗi kho chờ xử lý" if gt else ""))
+    L.insert(1, "🟢 Kho hôm nay ổn" if not xau else f"🔴 <b>{xau} việc chưa xong</b>")
+    return "\n".join(L)
+
+
 def hen(send=False):
     """Chạy theo lịch: 9h gợi ý kiểm kho + kiện hoàn còn thiếu; 17h nhắc chốt ca; 18h nhắc lại nếu chưa chốt."""
     h = datetime.now().hour
     out = None
-    if h < 12:
+    if h >= 18 and send:
+        pd = phieu_diem()
+        print(re.sub(r"<[^>]+>", "", pd))
+        for o in TK.duyet_ids():
+            tsend(o, pd)
+    if h < 12 and send and kchat():
+        st = dc_st()
+        if not any(st["tick"]):
+            tsend(kchat(), dc_text(st), dc_btn(st))
         maus = goi_y_kiem()
         cho = [r for r in TG.rows(TK.HOAN, fresh=True) if not r.get("Người nhận")]
         co_nh = NH.con_moi(180)
@@ -784,7 +873,7 @@ def san_bao(d, send=False, luon=False):
 
 
 TK.EXT_CMDS.update({"/dathang": dathang, "/hangve": hangve, "/chotdi": chotdi, "/chothoan": chothoan, "/kiemkho": kiemkho, "/kho": menu,
-                    "/nhanh": nhanh_tt})
+                    "/nhanh": nhanh_tt, "/dauca": dauca})
 TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/dathang", "/hangve", "/chotdi", "/chothoan", "/kiemkho")})
 TK.EXT_CB["kf"] = on_cb
 TK.EXT_REPLY.update({"kf_nhanh": on_reply, "kf_lechdi": on_reply})

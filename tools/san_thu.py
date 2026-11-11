@@ -19,6 +19,7 @@ HƯỚNG DẪN (mỗi dòng):
   tra <nội dung>          trả lời (reply) tin bot vừa hỏi "trả lời tin này" (tra anh = trả lời bằng ảnh)
   anh [chú thích]         gửi 1 ảnh (giả) vào nhóm đang đứng, có thể kèm lệnh: anh /hoan SPX123
   xem <tên bảng>          in dữ liệu 1 bảng (xem = liệt kê các bảng)
+  phieu                   in phiếu điểm kho cuối ngày (bot gửi chủ shop 18h)
   # ...                   ghi chú, bỏ qua
 Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng sau.
 """
@@ -288,6 +289,8 @@ def dong(line):
         return gui(rest or None, photo=True)
     if cmd == "xem":
         return xem(rest)
+    if cmd == "phieu":   # phiếu điểm kho cuối ngày (bot gửi chủ shop 18h)
+        return print(re.sub(r"<[^>]+>", "", kho_flow.phieu_diem()))
     gui(line)
 
 

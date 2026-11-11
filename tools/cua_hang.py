@@ -457,6 +457,18 @@ def hen(send=False):
             out.append((chat() or TK.E.get("CHAT_ID"), "⏰ <b>Việc treo quá 2 giờ</b>\n" + "\n".join(
                 f"• {esc(r['ID'])} {esc(r.get('Loại'))} đơn {esc(r.get('Mã đơn'))} — {esc(r.get('Trạng thái'))} "
                 f"({esc(r.get('Người giao'))})" for r in treo[:25])))
+    if h == 10:   # checklist đầu ca kho chưa tick đủ → nhắc nhóm kho + chủ shop
+        try:
+            import kho_flow as KF
+            st = KF.dc_st()
+            chua = [c for c, t in zip(KF.DAU_CA, st["tick"]) if not t]
+            if chua and TK.E.get("CHAT_ID"):
+                t = "⏰ <b>10h — đầu ca kho chưa xong</b>: " + "; ".join(esc(c) for c in chua) + "\nGõ /dauca để tick."
+                out.append((TK.E.get("CHAT_ID"), t))
+                for o in TK.duyet_ids():
+                    out.append((o, t))
+        except Exception as e:
+            print("hen: checklist kho lỗi", e)
     if h == 21 and mi < 45:
         gui_so_ck(send)
     if h == 21 and mi >= 45 and chat():

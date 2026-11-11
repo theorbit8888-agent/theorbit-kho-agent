@@ -1,0 +1,14 @@
+# 1 ngày kho: đầu ca tick → làm việc → phiếu điểm cuối ngày cho chủ shop
+la kho
+phieu
+kho: /dauca
+bam 1
+bam 2
+kho: /hoatoc 876897256 khách cần trước 18h
+anh file:kich-ban/tem-3-kien.jpg /hoan
+kho: /kiemkho 5 6 7 8 1 2 3 4 5 6 7 8 9 10 11 12 13
+kho: /chotdi\
+TikTok 50 48 47 2\
+Shopee 30 30 30 0
+anh file:kich-ban/ds-hoan-san.jpg /chothoan
+phieu
