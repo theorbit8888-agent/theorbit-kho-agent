@@ -1,0 +1,17 @@
+# Kịch bản mẫu sân thử: chạy  python3 tools/san_thu.py kich-ban/mau.txt
+la kho
+kho: /kho
+ch: /moca 4tr072k
+la cs
+ch: /chi 35k ship grab
+ch: /goi 876897256 gói kèm túi, book ship 14h
+la kho
+bam 1
+doitra: /tk
+bam 1
+xem
+# Mở ticket đổi hàng bằng 1 tin dán mẫu (đang ở chat riêng sau khi bấm nút)
+rieng: Mã đơn: 876897256\
+Tên: Test\
+SĐT: 0900000000\
+Đổi: SO-A4-RIVET-S → L

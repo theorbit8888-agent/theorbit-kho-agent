@@ -16,15 +16,27 @@ Bot Telegram @theorbit_kho_bot lo 3 nhóm: **Kho hàng về & restock**, **Đổ
 | `tools/lark.py` | đọc/ghi Lark Base + Sheet, nhắc 9h |
 | `tools/install_launchd.sh` | cài job chạy nền trên Mac chủ shop |
 
-## Cài để thử (máy của bạn, KHÔNG đụng nhóm thật)
-1. `git clone <repo>` → `cd kho-agent` → `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/playwright install chrome`
-2. Tạo **bot thử** bằng @BotFather, 3 **nhóm Telegram thử**, thêm bot vào nhóm.
-3. Xin chủ shop **bản copy Google Sheet** (không phải Sheet thật) + deploy Apps Script của bản copy.
-4. `mkdir -p ~/.config/orbit-kho-test && cp lark.env.example ~/.config/orbit-kho-test/lark.env` rồi điền đồ thử.
-5. Chạy: `ORBIT_KHO_ENV=~/.config/orbit-kho-test/lark.env .venv/bin/python tools/listener.py`
+## Có 2 cách tham gia
+
+### A. Góp ý (không cần cài gì)
+- Dùng bot thật trong nhóm như bình thường, hoặc chạy sân thử ở dưới.
+- Thấy gì chưa ổn → GitHub repo → **Issues → New issue → "Góp ý / báo lỗi bot kho"**, điền 4 dòng (làm trên điện thoại được).
+- Chủ shop/agent đọc Issue, sửa, cập nhật bot.
+
+### B. Hoàn thiện code (chỉ cần Claude Code)
+1. `git clone https://github.com/theorbit8888-agent/theorbit-kho-agent.git` → mở thư mục bằng Claude Code.
+2. Chạy **sân thử** — bot giả chạy ngay trên máy, KHÔNG cần bot/nhóm/Sheet thật, không gửi tin thật:
+   - `python3 tools/san_thu.py` → gõ như đang chat: `kho: /kho`, `ch: /moca 4tr`, `la kho`, `bam 1`, `xem`.
+   - `python3 tools/san_thu.py kich-ban/mau.txt` → chạy kịch bản có sẵn (thêm kịch bản mới vào `kich-ban/`).
+   - `python3 tools/san_thu.py --reset` → xoá dữ liệu thử.
+   - Nhờ Claude: "chạy sân thử kịch bản mau.txt, tìm chỗ khó dùng và sửa".
+3. Sửa xong: chạy lại kịch bản cho chắc → tạo nhánh → đẩy lên → mở **Pull Request** ghi rõ sửa gì, đã thử kịch bản nào.
+4. Chủ shop duyệt → agent cập nhật lên máy chạy thật.
+
+(Phần đọc Nhanh.vn / sàn cần Chrome đã đăng nhập của shop → sân thử bỏ qua, chủ shop thử trên máy thật.)
 
 ## Luật bắt buộc
-- **Không bao giờ** chạy bằng token bot thật: 2 máy cùng nghe 1 bot sẽ giành tin của nhau, bot thật chạy sai.
+- **Không bao giờ** chạy `listener.py` bằng token bot thật (dùng sân thử là đủ): 2 máy cùng nghe 1 bot sẽ giành tin của nhau, bot thật chạy sai.
 - Không commit/gửi file env, token, cookie, log (`logs/` đã bị .gitignore).
 - Không đưa SĐT / STK / CCCD khách hay nhân viên vào code, test hay nhóm đông.
 - Làm trên nhánh riêng → mở Pull Request → chủ shop duyệt → chủ shop `git pull` trên máy chạy thật + chạy lại `tools/install_launchd.sh`.

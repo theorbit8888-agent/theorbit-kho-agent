@@ -53,3 +53,7 @@ Bạn là **agent kho** của The Orbit (thời trang, bán TikTok Shop + Shopee
 - **Agent sản xuất** (`~/Desktop/san-xuat-agent`) lo lịch xưởng. Khi xưởng giao hàng về kho thì luồng chuyển sang agent kho (bảng 02/03). Không ghi lịch sản xuất vào Base này.
 - **Agent R&D** (`~/rnd-agent`) lo design → test ads → chốt sản xuất → đo bán 7/14 ngày, ghi bảng `08 · TEST & ĐO BÁN` (chỉ đọc với agent kho). Mẫu mới chốt sản xuất sẽ có dòng "Sắp mở bán" ở 05 do agent R&D thêm; hàng về thì kho cập nhật như thường.
 - Nhanh.vn: agent kho chưa có quyền; nhắc người kho "đã nhập Nhanh.vn chưa" và ghi cột tương ứng.
+
+## SÂN THỬ (cho team / Claude của team)
+- `python3 tools/san_thu.py [kich-ban/x.txt]`: Telegram + Sheet giả, dữ liệu ở `logs/san-thu/`. Sửa luồng nào thì viết/chạy kịch bản trong `kich-ban/` trước và sau khi sửa.
+- Không chạy `tools/listener.py` trên máy team; không đụng `~/.config/orbit-kho/`.
