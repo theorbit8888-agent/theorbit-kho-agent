@@ -315,6 +315,13 @@ if __name__ == "__main__":
     if a[0] == "login":
         sys.exit(0 if login() else 1)
     elif a[0] == "sync":
+        import nhanh_api as NA
+        if NA.co_api():   # có Open API: đọc thẳng máy chủ Nhanh, 24/24, không cần Chrome
+            try:
+                print(NA.sync())
+            except Exception as e:
+                bao_loi(f"lỗi API Nhanh: {e}"[:300]); raise
+            sys.exit(0)
         if "--gio" in a and not (7 <= datetime.now().hour < 23):
             sys.exit(0)
         try:
