@@ -193,7 +193,10 @@ def tra_hoan(mvd):
     Trả dict {kenh, ma_san, nhanh_id, return_id, loai, ly_do, tt_san, sp:[{ma, sl}], sp_san:[tên sàn]} hoặc None."""
     if not co_api() or not mvd:
         return None
-    for kenh, app in SAN_ECOM.items():
+    # tra đúng sàn trước (bài dạy D001): mã SPX → Shopee, còn lại (TikTok/J&T/VTP…) → TikTok; không thấy thì tra sàn kia
+    thu_tu = ["shopee", "tiktok"] if str(mvd).upper().startswith("SPX") else ["tiktok", "shopee"]
+    for kenh in thu_tu:
+        app = SAN_ECOM[kenh]
         try:
             d = goi("ecom/return", {"filters": {"appId": app, "returnIdOrReturnTrackingNumber": str(mvd)},
                                     "paginator": {"icpp": 5}}).get("data") or []
