@@ -1,0 +1,14 @@
+# Hàng hoàn có Nhanh: hiện tên SP phải có, lưu Sheet; kiện thiếu/tráo → bắt ảnh + ghi chú, gắn đơn sàn cho CS
+nhanh-gia
+la kho
+kho: /hoan GIA000001
+bam 1
+kho: /hoan GIA000002 GIA000003 KHONGCO999
+kho: /hoan GIA000004
+bam 4
+tra anh
+tra thiếu 1 áo Redline M, trong kiện chỉ có túi rỗng
+kho: /hoan GIA000005
+bam 3
+tra anh nhận áo trắng trơn thay vì Redline L
+xem 09
