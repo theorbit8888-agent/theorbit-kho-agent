@@ -215,6 +215,7 @@ import xuat_kho  # noqa: E402
 xuat_kho.STATE = os.path.join(SAN, "xuat_kho.json")
 xuat_kho.SAN_DIR = os.path.join(SAN, "san")
 xuat_kho.HUY_F = os.path.join(SAN, "huy_sau_in.json")
+xuat_kho.THIEU_F = os.path.join(SAN, "nhanh_thieu.json")
 import hoan_san  # noqa: E402
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 TK.init(dict(ENV), start_worker=False)

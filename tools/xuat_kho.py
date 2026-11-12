@@ -204,6 +204,8 @@ def bao_cao(ngay=None, ghi=True):
     ht, _ = huy_tong_ket(ngay) if (ngay != KF.today() or datetime.now().hour >= 16) else huy_bao()
     if ht:
         L.append("\n" + ht)
+    if ngay == KF.today() and (tt := thieu_bao()):
+        L.append("\n" + tt)
     if la:
         L.append(f"\n❓ {len(la)} mã kho quét không thấy trên Nhanh: "
                  + ", ".join(f"<code>{esc(g['ma'])}</code>" for g in la[:10]))
@@ -312,6 +314,8 @@ def giao(m, arg):
             if not la_cho(o) and _d(o.get("gui_dvvc") or o.get("cap_nhat")) < KF.today():
                 cu.append(o)
     luu(s)
+    if la or ngoai:
+        thieu_ghi([{"ma": x} for x in la + ngoai], "kho /giao")
     dem = {}
     for o in moi:
         dem[SAN_KENH.get(o["kenh"], o["kenh"])] = dem.get(SAN_KENH.get(o["kenh"], o["kenh"]), 0) + 1
@@ -402,6 +406,8 @@ def bao_sang():
     ht, _ = huy_bao()
     if ht:
         L.append(ht)
+    if tt := thieu_bao():
+        L.append(tt)
     ghi_qua = bool(L)
     if ghi_qua:
         bao_cao(qua)  # cập nhật dòng 07 hôm qua với trạng thái mới nhất
@@ -460,60 +466,106 @@ def dong_bo_lai():
 
 def so_san(d, lan_dong_bo=0):
     """d = {"luc": "07:31", "tiktok": [{"ma", "tt", "giao"}], "shopee": [{"ma", "mvd", "tt", "hoa_toc"}]} — danh sách đơn
-    CẦN GỬI đọc từ Seller Center (tác vụ lịch 7h30, Chrome chủ shop). So với Nhanh → in ở Nhanh, trừ đơn Nhanh chưa bắt
-    (in ở sàn) và đơn Nhanh thừa (sàn đã huỷ/đã giao → không in)."""
+    CẦN GỬI đọc từ Seller Center (tác vụ lịch 7h30, Chrome chủ shop). Kho IN ĐƠN Ở SÀN (từ 12/11/2026); bot so với Nhanh
+    để bắt tồn Nhanh lệch: đơn sàn có mà Nhanh thiếu (tồn chưa trừ) → ghi sổ theo dõi tới khi Nhanh có."""
     s = st()
     dd = ngay_st(s, KF.today())
     co_nh = bool(NH.meta())
     dd["san"] = [dict(x, kenh=k) for k in ("tiktok", "shopee") for x in d.get(k) or [] if x.get("ma")]
     cu = NH.meta().get("dong_bo", "") if co_nh else ""
-    L = [f"🖨 <b>IN ĐƠN HÔM NAY {datetime.now():%d/%m}</b> · sàn đọc lúc {esc(d.get('luc', ''))}"
-         + (f" · Nhanh cập nhật {esc(cu[11:] or cu)}" if co_nh else "")
-         + (f" (đã đồng bộ lại Nhanh {lan_dong_bo} lần)" if lan_dong_bo else "")]
-    ket, can_san = {}, 0
+    L = [f"🖨 <b>IN ĐƠN Ở SÀN {datetime.now():%d/%m}</b> · sàn đọc lúc {esc(d.get('luc', ''))}"
+         + (f" · Nhanh cập nhật {esc(cu[11:] or cu)}" if co_nh else "")]
+    ket, lech_ton = {}, []
     lech = lech_san(d) if co_nh else {}
     for k in ("tiktok", "shopee"):
         ds = d.get(k)
         if ds is None:
-            L.append(f"\n❔ <b>{SAN_KENH[k]}</b>: không đọc được Seller Center → chưa so được, <b>IN Ở SÀN</b> cho chắc"); continue
+            L.append(f"\n❔ <b>{SAN_KENH[k]}</b>: bot không đọc được Seller Center — kho vẫn in ở sàn như thường"); continue
+        tong = d.get("tong_" + k) or 0
+        gap = [x for x in ds if x.get("hoa_toc") or "tốc" in str(x.get("giao", "")).lower()]
+        L.append(f"\n📦 <b>{SAN_KENH[k]}</b>: cần gửi <b>{len(ds)}</b> đơn" + (f" · 🔥 hoả tốc {len(gap)} (in + gói trước)" if gap else "")
+                 + (f"\n   ⚠️ bot chỉ đọc được {len(ds)}/{tong} đơn — đối soát dưới có thể thiếu" if tong > len(ds) + 2 else ""))
+        ket[k] = "san"
         if not co_nh:
-            ket[k] = "san"
-            L.append(f"\n🖨 <b>{SAN_KENH[k]}</b>: sàn cần gửi <b>{len(ds)}</b> → chưa đọc được Nhanh, <b>IN Ở SÀN</b>")
             continue
         x = lech[k]
-        thieu = x["thieu"] + x["huy_nh"]
-        tong = d.get("tong_" + k) or 0
-        if tong > len(ds) + 2:
-            L.append(f"\n⚠️ {SAN_KENH[k]}: chỉ đọc được {len(ds)}/{tong} đơn trên sàn — kết quả dưới có thể thiếu")
-        gap = f" · 🔥 hoả tốc {len(x['gap'])}" if x["gap"] else ""
-        if len(thieu) > max(10, len(ds) // 3):   # Nhanh hụt quá nhiều → coi như Nhanh chưa đồng bộ
-            ket[k] = "san"; can_san += len(ds)
-            L.append(f"\n🔴 <b>{SAN_KENH[k]}</b>: sàn cần gửi <b>{len(ds)}</b>{gap} · Nhanh chưa bắt {len(thieu)} đơn"
-                     " → <b>IN HẾT Ở SÀN</b> hôm nay")
-            continue
-        ket[k] = "nhanh" if not thieu and not x["du"] else "nhanh_loc"
-        L.append(f"\n{'✅' if ket[k] == 'nhanh' else '⚠️'} <b>{SAN_KENH[k]}</b>: sàn cần gửi <b>{len(ds)}</b>{gap}"
-                 f" → <b>IN Ở NHANH {len(ds) - len(thieu)} đơn</b>")
+        thieu = x["thieu"]
+        dl = f" (đã đồng bộ lại Nhanh {lan_dong_bo} lần)" if lan_dong_bo else ""
         if thieu:
-            can_san += len(thieu)
-            L.append(f"   🖨 <b>IN Ở SÀN {len(thieu)} đơn</b> (Nhanh {'vẫn ' if lan_dong_bo else ''}chưa bắt"
-                     + (" / Nhanh ghi huỷ mà sàn còn cần gửi" if x["huy_nh"] else "") + "):\n   "
-                     + ", ".join(f"<code>{esc(o['ma'])}</code>" for o in thieu[:40]) + (" …" if len(thieu) > 40 else ""))
+            thieu_ghi([dict(o, kenh=k) for o in thieu], "sàn cần gửi 7h30")
+            lech_ton.append(f"   🔗 {SAN_KENH[k]}: <b>{len(thieu)} đơn Nhanh chưa có</b>{dl} → tồn Nhanh CHƯA TRỪ, dễ bán vượt: "
+                            + ", ".join(f"<code>{esc(o['ma'])}</code>" for o in thieu[:30]) + (" …" if len(thieu) > 30 else ""))
+        if x["huy_nh"]:
+            lech_ton.append(f"   ⚠️ {SAN_KENH[k]}: <b>{len(x['huy_nh'])} đơn sàn vẫn cần gửi mà Nhanh ghi huỷ</b>{dl} → Nhanh đã nhả hàng,"
+                            " tồn Nhanh CAO hơn thật (kiểm lại đơn trên sàn, đúng là cần gửi thì sửa trên Nhanh): "
+                            + ", ".join(f"<code>{esc(o['ma'])}</code>" for o in x["huy_nh"][:30]))
         if x["du"]:
-            L.append(f"   ⛔ <b>KHÔNG IN {len(x['du'])} đơn</b> Nhanh còn ghi chờ gửi mà sàn đã huỷ/đã giao: " + ds_ma(x["du"], 60))
-        if thieu or x["du"]:
-            L.append("   📦 <b>Tồn Nhanh lệch</b>:"
-                     + (f" {len(thieu)} đơn Nhanh chưa có / ghi huỷ → tồn Nhanh CHƯA TRỪ hàng của các đơn này (dễ bán vượt)"
-                        " → vào Nhanh › Đơn sàn › Lấy đơn kéo về;" if thieu else "")
-                     + (f" {len(x['du'])} đơn sàn đã huỷ/giao mà Nhanh còn giữ hàng → tồn Nhanh đang THẤP hơn thật,"
-                        " mai vẫn còn thì sửa trạng thái trên Nhanh." if x["du"] else ""))
+            lech_ton.append(f"   ⛔ {SAN_KENH[k]}: <b>{len(x['du'])} đơn Nhanh còn chờ gửi mà sàn đã huỷ/đã giao</b>"
+                            " → Nhanh đang giữ hàng, tồn Nhanh THẤP hơn thật: " + ds_ma(x["du"], 30))
     luu(s)
-    if co_nh and ket and all(v == "nhanh" for v in ket.values()):
-        L.append("\n🟢 Khớp hết — hôm nay in toàn bộ ở Nhanh.")
-    elif can_san:
-        L.append(f"\n👉 In Nhanh trước, rồi lên sàn in nốt {can_san} đơn ở trên (tìm theo mã đơn). Đơn ⛔ thì bỏ ra.")
-    L.append("Giao shipper xong chụp tem chú thích <code>/giao</code> — bot so cả đơn chỉ có trên sàn.")
+    if co_nh:
+        L.append("\n🧮 <b>ĐỐI SOÁT TỒN NHANH</b>")
+        L.extend(lech_ton or ["   🟢 Đơn sàn và Nhanh khớp — tồn Nhanh đã trừ đủ."])
+        if lech_ton:
+            L.append("   → Đơn 🔗: vào Nhanh › Đơn sàn › Lấy đơn kéo về (bot nhắc 9h + 17h mỗi ngày tới khi Nhanh có). Đơn ⛔: mai vẫn còn thì sửa trạng thái trên Nhanh.")
+    else:
+        L.append("\n❔ Chưa đọc được Nhanh → chưa đối soát tồn được.")
+    L.append("Giao shipper: chụp tem chú thích <code>/giao</code> — bot so từng kiện với Nhanh, kiện Nhanh không có sẽ vào sổ theo dõi tồn.")
     return "\n".join(L), ket
+
+
+# ======================= SỔ "NHANH THIẾU ĐƠN" (đơn in/giao ở sàn mà Nhanh chưa có → tồn Nhanh chưa trừ) =======================
+
+THIEU_F = os.path.join(KF.ROOT, "logs", "nhanh_thieu.json")
+
+
+def thieu_doc():
+    try:
+        return json.load(open(THIEU_F))
+    except Exception:
+        return {}
+
+
+def thieu_luu(t):
+    han = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+    t = {k: v for k, v in t.items() if (v.get("co") or v["tu"]) >= han}
+    os.makedirs(os.path.dirname(THIEU_F), exist_ok=True)
+    json.dump(t, open(THIEU_F, "w"), ensure_ascii=False, indent=1)
+
+
+def thieu_ghi(xs, nguon):
+    """xs: [{ma, mvd?, kenh?}] — đơn sàn có mà Nhanh chưa có."""
+    t = thieu_doc()
+    for x in xs:
+        k = str(x.get("ma") or "").lower()
+        if k and k not in t and not (x.get("mvd") and str(x["mvd"]).lower() in t):
+            t[k] = {"ma": x["ma"], "mvd": x.get("mvd", ""), "kenh": x.get("kenh", ""), "tu": KF.today(), "nguon": nguon, "co": ""}
+    thieu_luu(t)
+
+
+def thieu_cap_nhat():
+    """Đơn trong sổ mà Nhanh đã có → đánh dấu xong. Trả danh sách còn thiếu (cũ nhất trước)."""
+    t = thieu_doc()
+    if not t or not NH.meta():
+        return []
+    idx = nh_idx()
+    for v in t.values():
+        if not v.get("co") and (idx.get(str(v["ma"]).lower()) or (v.get("mvd") and idx.get(str(v["mvd"]).lower()))):
+            v["co"] = KF.today()
+    thieu_luu(t)
+    return sorted((v for v in t.values() if not v.get("co")), key=lambda v: v["tu"])
+
+
+def thieu_bao():
+    con = thieu_cap_nhat()
+    if not con:
+        return ""
+    cu = [v for v in con if v["tu"] < KF.today()]
+    return (f"🔗 <b>{len(con)} đơn đã in/giao ở sàn mà Nhanh vẫn chưa có</b> → tồn Nhanh chưa trừ hàng các đơn này"
+            + (f" (⏳ {len(cu)} đơn từ hôm trước)" if cu else "") + ":\n"
+            + "\n".join(f"• <code>{esc(v['ma'])}</code> {SAN_KENH.get(v.get('kenh'), '')} · từ {v['tu'][8:]}/{v['tu'][5:7]} ({esc(v['nguon'])})"
+                        for v in con[:25]) + (f"\n… (+{len(con) - 25})" if len(con) > 25 else "")
+            + "\n→ Nhanh › Đơn sàn › Lấy đơn kéo về; mã kho quét sai thì bỏ qua.")
 
 
 def so_san_file(path, send=False, doi=True):
