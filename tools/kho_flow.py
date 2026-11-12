@@ -823,10 +823,10 @@ def kiemkho(m, arg):
             tsend(o, "⚠️ <b>Kiểm kho lệch</b>\n" + t)
 
 
-def ban_hom_qua():
-    """Số lượng bán ra hôm qua theo mã mẫu (đơn đã giao ĐVVC hôm qua, theo Nhanh)."""
+def ban_hom_qua(hom_nay=False):
+    """Số lượng hàng ĐI theo mã mẫu (đơn đã giao ĐVVC hôm qua — hoặc hôm nay nếu hom_nay=True, theo Nhanh)."""
     from collections import Counter
-    hq = (datetime.now() - timedelta(days=1)).date()
+    hq = (datetime.now() - timedelta(days=0 if hom_nay else 1)).date()
     keys = sorted(sku_bang(), key=len, reverse=True)
     c = Counter()
     for o in NH.orders().values():
@@ -844,13 +844,15 @@ def goi_y_kiem(n=5):
     """Mẫu cần kiểm hôm nay: ưu tiên mẫu BÁN RA HÔM QUA (nhiều nhất trước), thiếu thì bù bằng xoay vòng bảng SKU
     (bỏ phụ kiện/combo). Chốt 1 lần/ngày để danh sách 9h và /kiemkho luôn khớp thứ tự."""
     k = "kiem" + today()
-    if TK.STATE_KF.get(k):
-        return TK.STATE_KF[k]["maus"]
+    toi = datetime.now().hour >= 17   # danh sách gửi 17h30: lấy hàng ĐI HÔM NAY (kiểm sau khi đi đơn)
+    cu = TK.STATE_KF.get(k)
+    if cu and (cu.get("toi") or not toi):
+        return cu["maus"]
     maus = [m for m in sku_bang() if not m.startswith(("PK-", "CB-"))]
     if not maus:
         return []
     try:
-        ban = ban_hom_qua()
+        ban = ban_hom_qua(hom_nay=toi)
     except Exception as e:
         print("kho_flow: đọc hàng bán hôm qua lỗi", e, flush=True)
         ban = {}
@@ -861,14 +863,15 @@ def goi_y_kiem(n=5):
             break
         if m not in chon:
             chon.append(m)
-    TK.STATE_KF[k] = {"maus": chon, "ban": {m: ban[m] for m in chon if m in ban}}
+    TK.STATE_KF[k] = {"maus": chon, "ban": {m: ban[m] for m in chon if m in ban}, "toi": toi}
     TK._save()
     return chon
 
 
 def ly_do_kiem(mau):
-    b = (TK.STATE_KF.get("kiem" + today()) or {}).get("ban", {}).get(mau)
-    return f"bán hôm qua {b}" if b else "xoay vòng"
+    st = TK.STATE_KF.get("kiem" + today()) or {}
+    b = st.get("ban", {}).get(mau)
+    return (f"đi {'hôm nay' if st.get('toi') else 'hôm qua'} {b}") if b else "xoay vòng"
 
 
 # ======================= nút =======================
@@ -957,7 +960,7 @@ def menu(m, arg):
           "<code>/giulai</code>. Gõ /giulai xem kiện huỷ còn thiếu\n\n"
           f"🚚 <b>Chốt đơn đi</b> (17h, đếm tay nếu chưa quét):\n<code>{esc(MAU['chotdi'])}</code>\n\n"
           "🧾 <b>Đối soát hàng hoàn</b> (17h): chụp màn hình danh sách hoàn trên sàn, chú thích <code>/chothoan</code>\n\n"
-          "🔢 <b>Kiểm kho</b>: gõ /kiemkho xem danh sách hôm nay → gõ <code>/kiemkho</code> + các số đếm theo thứ tự",
+          "🔢 <b>Kiểm kho</b>: 17h30 bot gửi danh sách (mẫu đi nhiều nhất hôm nay) · gõ /kiemkho xem lại → gõ <code>/kiemkho</code> + các số đếm theo thứ tự",
           reply_to=m["message_id"])
 
 
@@ -1036,10 +1039,27 @@ def phieu_diem():
     return "\n".join(L)
 
 
+def tin_kiem_kho():
+    maus = goi_y_kiem()
+    ds = ds_kiem_hom_nay()
+    n_ban = sum(1 for m in maus if ly_do_kiem(m) != "xoay vòng")
+    return ("🔢 <b>KIỂM KHO HÔM NAY</b> (" + (f"{n_ban} mẫu đi nhiều nhất hôm nay + xoay vòng" if n_ban else "xoay vòng")
+            + ") — đếm theo thứ tự rồi gõ <b>chỉ các số</b>, "
+            f"VD <code>/kiemkho {' '.join(['12'] * min(len(ds), 3))} …</code>"
+            + (" (bot tự so tồn Nhanh)" if NH.con_moi(180) else "") + ":\n"
+            + "\n".join(f"{i}. {esc(s)}" for i, s in enumerate(ds, 1)))
+
+
 def hen(send=False):
     """Chạy theo lịch: 9h gợi ý kiểm kho + kiện hoàn còn thiếu; 17h nhắc chốt ca; 18h nhắc lại nếu chưa chốt."""
     h = datetime.now().hour
     out = None
+    if h == 17 and datetime.now().minute >= 25:   # 17h30: danh sách kiểm kho (sau khi đi đơn xong)
+        t = tin_kiem_kho()
+        print(re.sub(r"<[^>]+>", "", t))
+        if send and kchat():
+            tsend(kchat(), t)
+        return
     if h >= 18 and send:
         pd = phieu_diem()
         print(re.sub(r"<[^>]+>", "", pd))
@@ -1054,16 +1074,8 @@ def hen(send=False):
         st = dc_st()
         if not any(st["tick"]):
             tsend(kchat(), dc_text(st), dc_btn(st))
-        maus = goi_y_kiem()
         cho = [r for r in TG.rows(TK.HOAN, fresh=True) if not r.get("Người nhận")]
-        co_nh = NH.con_moi(180)
-        ds = ds_kiem_hom_nay()
-        n_ban = sum(1 for m in maus if ly_do_kiem(m) != "xoay vòng")
-        out = ("🔢 <b>Kiểm kho hôm nay</b> (" + (f"{n_ban} mẫu bán chạy hôm qua + xoay vòng" if n_ban else "xoay vòng")
-               + ") — đếm theo thứ tự rồi gõ <b>chỉ các số</b>, "
-               f"VD <code>/kiemkho {' '.join(['12'] * min(len(ds), 3))} …</code>"
-               + (" (bot tự so tồn Nhanh)" if co_nh else "") + ":\n"
-               + "\n".join(f"{i}. {esc(s)}" for i, s in enumerate(ds, 1)))
+        out = "☀️ <b>ĐẦU NGÀY KHO</b> · 🔢 danh sách kiểm kho gửi lúc <b>17h30</b> (sau khi đi đơn)"
         hoan_t, thieu = doi_soat_hoan_nhanh()
         if thieu:
             out += "\n\n" + hoan_t
@@ -1099,6 +1111,8 @@ def hen(send=False):
                    f"1️⃣ Chốt đơn đi:\n<code>{esc(MAU['chotdi'])}</code>\n\n"
                    f"2️⃣ Đối soát hàng hoàn: lấy danh sách đơn đã hoàn hôm nay trên Nhanh/Seller Center, dán:\n"
                    f"<code>{esc(MAU['chothoan'])}</code>")
+    if not out or out.startswith("☀️ <b>ĐẦU NGÀY KHO</b>") and "\n" not in out:
+        return print("9h: không có việc cần báo")
     print(re.sub(r"<[^>]+>", "", out))
     if send and kchat():
         tsend(kchat(), out)
