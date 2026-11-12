@@ -278,8 +278,10 @@ def bao_loi(msg):
             import lark as Lk, ticket as TK
             TK.init(Lk.load_env(), start_worker=False)
             for u in TK.duyet_ids():
-                TK.tsend(u, f"⚠️ Bot kho không đọc được Nhanh.vn: {TK.esc(msg)}\nNhắn <b>/dangnhapnhanh</b> cho bot kho khi "
-                            "đang ngồi máy Mac — bot mở cửa sổ để anh/chị đăng nhập lại.")
+                goi_y = ("Bot đọc Nhanh qua API: báo Claude kiểm tra; nếu mã hết hạn/bị thu hồi thì gõ <b>/ketnoinhanh</b> để nối lại."
+                         if "API" in msg else "Nhắn <b>/dangnhapnhanh</b> cho bot kho khi đang ngồi máy Mac — bot mở cửa sổ "
+                         "để anh/chị đăng nhập lại.")
+                TK.tsend(u, f"⚠️ Bot kho không đọc được Nhanh.vn: {TK.esc(msg)}\n{goi_y}")
             m["bao_loi_luc"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         except BaseException as e:
             print("không nhắn được:", e)

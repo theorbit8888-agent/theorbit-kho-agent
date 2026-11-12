@@ -65,10 +65,12 @@ def goi(path, body):
     raise LoiApi(f"{path}: thử 4 lần không được")
 
 
-def tat_ca(path, filters, size=100, toi_da=200, extra=None):
+def tat_ca(path, filters, size=100, toi_da=200, extra=None, sort=True):
     out, nxt, n = [], None, 0
     while n < toi_da:
-        body = {"filters": filters, "paginator": {"size": size, "sort": {"id": "desc"}}}
+        body = {"filters": filters, "paginator": {"size": size}}
+        if sort:   # order/list không cho sort (mặc định id giảm dần)
+            body["paginator"]["sort"] = {"id": "desc"}
         if nxt:
             body["paginator"]["next"] = nxt
         if extra:
@@ -113,7 +115,7 @@ def products():
 def orders(ngay=14):
     tu = int((datetime.now() - timedelta(days=ngay)).timestamp())
     dons = {}
-    for o in tat_ca("order/list", {"createdAtFrom": tu, "createdAtTo": int(time.time())}, toi_da=400):
+    for o in tat_ca("order/list", {"createdAtFrom": tu, "createdAtTo": int(time.time())}, toi_da=400, sort=False):
         i, c, ch = o.get("info") or {}, o.get("carrier") or {}, o.get("channel") or {}
         dons[str(i.get("id"))] = {
             "id": str(i.get("id")), "kenh": KENH_ID.get(_so(ch.get("saleChannel")), "ngoai"),
