@@ -185,8 +185,9 @@ def bao_cao(ngay=None, ghi=True):
         L.append(f"\n{'✅' if not bad else '⚠️'} <b>{san}</b>: cần gửi <b>{len(x['can'])}</b>"
                  + (f" · kho quét giao <b>{len(x['quet'])}</b>" if co_quet else "")
                  + f" · sàn ghi nhận ĐVVC lấy <b>{len(x['lay'])}</b>")
-        if x["huy_da_giao"] or x["huy_sau_in"]:
-            L.append(f"   ⛔ {len(x['huy_sau_in']) + len(x['huy_da_giao'])} đơn huỷ sau khi in (chi tiết ở mục ĐƠN HUỶ SAU IN)")
+        n_huy = len([1 for h in HUY.values() if h.get("kenh") == k and h.get("huy") == ngay])   # cùng nguồn với mục tổng kết
+        if n_huy:
+            L.append(f"   ⛔ {n_huy} đơn huỷ sau khi in (chi tiết ở mục ĐƠN HUỶ SAU IN)")
         if x["quet_chua_lay"]:
             L.append(f"   📣 {len(x['quet_chua_lay'])} kiện kho đã giao mà sàn chưa ghi nhận lấy → shipper chưa quét, "
                      f"đối chiếu biên bản: {ds_ma(x['quet_chua_lay'])}")
@@ -383,6 +384,41 @@ def bao_chieu():
     if not NH.con_moi(180):
         return "", 0
     return bao_cao()
+
+
+def doi_soat_shipper():
+    """12h / 18h (bài dạy D004): đơn ĐÃ IN TEM mà sàn vẫn chưa ghi nhận shipper lấy → đối chiếu với shipper
+    (shipper báo "quét hết" nhưng sàn còn sót đơn chưa quét → đơn trễ/fail). Trả list tin (mỗi sàn 1 tin, tránh quá dài)."""
+    try:   # đọc Nhanh mới nhất ngay lúc báo (lịch 30 phút có thể trễ)
+        import nhanh_api as NA
+        if NA.co_api():
+            NA.sync()
+    except Exception as e:
+        print("doi_soat_shipper: đọc Nhanh lỗi", repr(e)[:200], flush=True)
+    if not NH.con_moi(90):
+        return []
+    out, _, _ = tinh(KF.today())
+    gio = datetime.now().strftime("%Hh%M")
+    tin, tong = [], 0
+    for k, x in out.items():
+        xs = x["quet_chua_lay"] + x["chua_di"]
+        if not xs:
+            continue
+        tong += len(xs)
+        dong = [f"• <b>{SAN_KENH.get(k, k)}: {len(xs)} đơn</b>"
+                + (f" (🚨 {len(x['quet_chua_lay'])} kho đã giao shipper)" if x["quet_chua_lay"] else "")]
+        for o in xs[:60]:
+            dong.append(("🚨 " if o in x["quet_chua_lay"] else "") + f"<code>{esc(o.get('mvd'))}</code> · đơn "
+                        f"<code>{esc(o.get('ma_san') or o.get('id'))}</code>")
+        if len(xs) > 60:
+            dong.append(f"… (+{len(xs) - 60}) — gõ /doisoat xem đủ")
+        tin.append("\n".join(dong))
+    if not tong:
+        return [f"✅ <b>ĐỐI SOÁT SHIPPER {gio}</b>: mọi đơn đã in tem hôm nay sàn đều ghi nhận shipper đã lấy."]
+    dau = (f"🚚 <b>ĐỐI SOÁT SHIPPER {gio}</b> — <b>{tong} đơn đã in tem mà sàn chưa ghi nhận shipper quét</b> "
+           "(MVĐ · mã đơn sàn):\n"
+           "→ Còn trong kho: đưa shipper quét ngay. 🚨 Đã đưa shipper mà sàn chưa ghi lấy: hỏi shipper, đối chiếu biên bản.")
+    return [dau] + tin
 
 
 def bao_sang():
