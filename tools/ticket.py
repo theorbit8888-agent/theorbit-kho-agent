@@ -370,12 +370,13 @@ def sp_don(ma):
     def ten_sp(c):
         t = (ps.get(c) or ps.get(str(c).upper()) or {}).get("ten")
         return f"{t} ({c})" if t else str(c)
-    if not o["sp"] and o.get("tra_sau_giao"):
-        return o, "; ".join(o["tra_sau_giao"]["sp_san"])
-    sp = "; ".join(f"{ten_sp(x['ma'])} x{x['sl']}" for x in o["sp"])
-    if o.get("tra_sau_giao"):   # kiện khách trả: ghi cả hàng đã gửi (Nhanh) lẫn phiếu trả trên sàn — lệch size/mẫu thì thấy ngay
-        sp += " ‖ Sàn ghi khách trả: " + "; ".join(o["tra_sau_giao"]["sp_san"])
-    return o, sp
+    t = o.get("tra_sau_giao")
+    if t:   # kiện khách trả (bài dạy D002): chỉ các món khách YÊU CẦU TRẢ, đúng số lượng + đơn gốc để đối chiếu
+        phai = [f"{ten_sp(x['ma'])} x{x['sl']}" for x in t["sp"]] + [f"{x} (chưa rõ mã)" for x in t.get("chua_ghep", [])]
+        goc = "; ".join(f"{x['ma']} x{x['sl']}" for x in t.get("don_goc", []))
+        sp = "; ".join(phai) or "; ".join(t["sp_san"])
+        return o, sp + (f" ‖ Đơn gốc gồm: {goc}" if goc else "")
+    return o, "; ".join(f"{ten_sp(x['ma'])} x{x['sl']}" for x in o["sp"])
 
 
 _TRA_HOAN = {}   # MVĐ -> kết quả tra trả hàng sàn (tránh gọi API lặp)
@@ -388,9 +389,8 @@ def don_nhanh(ma):
         return ""
     import nhanh as NH
     return (f"📦 Nhanh: đơn {NH.TEN_KENH.get(o['kenh'], o['kenh'])} {o['ma_san'] or o['id']} ({o['st_ten']})\n"
-            + (f"Hàng đã gửi khách (Nhanh): <b>{esc(sp.split(' ‖ ')[0])}</b>\n🧾 {esc(sp.split(' ‖ ')[1])}\n"
-               "→ Khách có thể chỉ trả 1 phần: đếm đúng món trong kiện, thiếu/khác thì bấm Thiếu/Tráo."
-               if " ‖ " in sp else f"Trong kiện phải có: <b>{esc(sp)}</b>"))
+            + f"Trong kiện phải có: <b>{esc(sp.split(' ‖ ')[0])}</b>"
+            + (f"\n<i>{esc(sp.split(' ‖ ')[1])} — khách chỉ trả các món trên</i>" if " ‖ " in sp else ""))
 
 
 # ======================= thẻ ticket =======================

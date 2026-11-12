@@ -212,15 +212,81 @@ def tra_hoan(mvd):
              "tt_san": (x.get("ecomStatus") or {}).get("name") or "",
              "sp_san": [f"{p.get('name', '')[:60]} {('· ' + p['sku']) if p.get('sku') else ''} x{p.get('quantity')}".strip() for p in ps],
              "sp": []}
-        # SKU chuẩn Nhanh: Shopee trả đúng mã SKU; TikTok chỉ có tên phân loại → lấy từ đơn gốc trên Nhanh
-        import nhanh as NH
-        prods = NH.products()
-        if ps and all(str(p.get("sku") or "").upper() in prods for p in ps):
-            r["sp"] = [{"ma": p["sku"], "sl": _so(p.get("quantity"))} for p in ps]
-        elif r["nhanh_id"]:
-            o = don_theo_id(r["nhanh_id"])
-            if o:
-                r["sp"] = o["sp"]
-                r["ca_don"] = True   # SP của cả đơn gốc (khách có thể chỉ trả 1 phần)
+        # Bài dạy D002: chỉ lấy ĐÚNG món + số lượng khách yêu cầu trả (khách mua nhiều có thể trả 1 phần).
+        # Shopee ghi mã SKU; TikTok chỉ ghi phân loại ("Xanh Jean, M") → ghép với từng dòng của đơn gốc trên Nhanh.
+        o = don_theo_id(r["nhanh_id"]) if r["nhanh_id"] else None
+        r["don_goc"] = (o or {}).get("sp", [])
+        r["sp"], r["chua_ghep"] = ghep_tra(ps, r["don_goc"])
         return r
     return None
+
+
+SIZE = {"XS", "S", "M", "L", "XL", "XXL", "2XL", "3XL", "FREESIZE", "FREE"}
+
+
+def _bo_dau(t):
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(t or "").lower().replace("đ", "d"))
+    return "".join(c for c in t if unicodedata.category(c) != "Mn")
+
+
+def _tu(t):
+    import re
+    return {w for w in re.findall(r"[a-z0-9]+", _bo_dau(t)) if len(w) >= 3}
+
+
+# màu tương đương giữa tên phân loại sàn và mã/tên Nhanh (đã gặp: TikTok "Be" = Nhanh "TRANG")
+MAU_DONG = {"be": "trang", "kem": "trang", "white": "trang", "trang": "trang", "black": "den", "den": "den",
+            "xanh": "xanh", "blue": "xanh", "jean": "xanh", "navy": "xanh", "xam": "xam", "grey": "xam", "gray": "xam",
+            "do": "do", "red": "do", "nau": "nau", "brown": "nau"}
+MAU_ALL = set(MAU_DONG.values())
+
+
+def _mau(t):
+    import re
+    return {MAU_DONG[w] for w in re.findall(r"[a-z]+", _bo_dau(t)) if w in MAU_DONG}
+
+
+def ghep_tra(ps, don_goc):
+    """Món khách trả (phiếu sàn) → [{ma, sl}] SKU Nhanh + [tên món chưa ghép được].
+    Ưu tiên: SKU sàn có trên Nhanh → khớp dòng đơn gốc theo size + màu + tên mẫu → đơn còn đúng 1 dòng."""
+    import nhanh as NH
+    prods = NH.products()
+    con = [{"ma": str(x["ma"]), "sl": x.get("sl") or 1} for x in don_goc]
+    out, chua = [], []
+    for p in ps:
+        sl = _so(p.get("quantity")) or 1
+        sku = str(p.get("sku") or "").strip().upper()
+        if sku in prods:
+            out.append({"ma": sku, "sl": sl})
+            for c in con:
+                if c["ma"].upper() == sku:
+                    c["sl"] -= sl
+            continue
+        bien = [x.strip() for x in str(p.get("sku") or "").split(",") if x.strip()]
+        size = next((x.upper() for x in reversed(bien) if x.upper() in SIZE), "")
+        mau = _mau(" ".join(x for x in bien if x.upper() not in SIZE))
+        ten = _tu(p.get("name"))
+        best, diem = None, 0
+        for c in con:
+            if c["sl"] <= 0:
+                continue
+            ma, tn = c["ma"].upper(), (prods.get(c["ma"]) or prods.get(c["ma"].upper()) or {}).get("ten", "")
+            d = 0
+            if size and (ma.endswith("-" + size) or _bo_dau(tn).rstrip().endswith(" " + size.lower())):
+                d += 3
+            mc = _mau(ma.replace("-", " ") + " " + tn)
+            d += 2 * len(mau & mc)
+            if mau and (mc & MAU_ALL) and not (mau & mc):   # sàn ghi màu khác hẳn màu của dòng này
+                d -= 2
+            d += 0.5 * len(ten & (_tu(tn) | _tu(ma.replace("-", " "))))
+            if d > diem:
+                best, diem = c, d
+        if not best:
+            left = [c for c in con if c["sl"] > 0]
+            best = left[0] if len(left) == 1 else None
+        if best:
+            out.append({"ma": best["ma"], "sl": sl}); best["sl"] -= sl
+        else:
+            chua.append(f"{str(p.get('name', ''))[:50]} · {p.get('sku') or ''} x{sl}")
+    return out, chua
