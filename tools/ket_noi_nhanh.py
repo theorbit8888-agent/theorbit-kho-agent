@@ -16,7 +16,20 @@ import nhanh_api as NA  # noqa: E402
 APP_ID = "78827"          # app "Orbit Bot Kho" tạo trên open.nhanh.vn ngày 12/11/2026
 RETURN = "https://www.google.com/"
 HAN = 15 * 60
-KN = {}                   # uid -> {"buoc": "secret"|"url", "vc", "han"}
+_F = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs", "ket_noi_nhanh.json")
+try:   # giữ bước đang dở qua lần khởi động lại bot (chỉ lưu bước + verifyCode, KHÔNG lưu mã)
+    KN = {int(k): v for k, v in json.load(open(_F)).items()}
+except Exception:
+    KN = {}                   # uid -> {"buoc": "secret"|"url", "vc", "han"}
+
+
+def _luu_kn():
+    try:
+        with open(_F, "w") as fh:
+            json.dump(KN, fh)
+        os.chmod(_F, 0o600)
+    except Exception:
+        pass
 
 
 def la_chu(uid):
@@ -42,6 +55,7 @@ def cmd(m, arg):
     if not la_chu(uid):
         return TK.tsend(chat, "Chỉ chủ shop dùng lệnh này.")
     KN[uid] = {"buoc": "secret", "han": time.time() + HAN}
+    _luu_kn()
     TK.tsend(chat, "🔌 <b>Kết nối bot kho với Nhanh (API chính thức)</b>\n\n"
                    f"<b>Bước 1/2:</b> mở trang app <b>Orbit Bot Kho</b> (App ID {APP_ID}), copy <b>Secret key</b> "
                    "rồi dán vào đây. Bot lưu xong sẽ <b>xoá tin của bạn</b> ngay.\n/huy để dừng.",
@@ -51,11 +65,16 @@ def cmd(m, arg):
 def tra_loi(m):
     uid, chat = m["from"]["id"], m["chat"]["id"]
     w = KN.get(uid)
-    if not w:
-        return False
     text = (m.get("text") or "").strip()
+    if not w:
+        if la_chu(uid) and re.fullmatch(r"[A-Za-z0-9_\-]{40,}", text):   # dán mã mà chưa gõ lệnh: xoá, không chuyển đi đâu
+            xoa(m)
+            TK.tsend(chat, "🔒 Tin vừa rồi giống mã bí mật nên bot đã xoá, không lưu. Muốn kết nối Nhanh thì gõ "
+                           "/ketnoinhanh trước rồi mới dán Secret key.")
+            return True
+        return False
     if time.time() > w["han"]:
-        KN.pop(uid, None)
+        KN.pop(uid, None); _luu_kn()
         TK.tsend(chat, "⌛ Quá 15 phút. Gõ lại /ketnoinhanh.")
         return True
     if w["buoc"] == "secret":
@@ -67,6 +86,7 @@ def tra_loi(m):
         luu({"NHANH_APP_ID": APP_ID, "NHANH_SECRET": sec})
         vc = secrets.token_urlsafe(24).replace("-", "a").replace("_", "b")[:32]
         w.update(buoc="url", vc=vc, han=time.time() + HAN)
+        _luu_kn()
         link = f"https://nhanh.vn/oauth?appId={APP_ID}&service=pos&verifyCode={vc}&returnLink={RETURN}"
         TK.tsend(chat, "✅ Đã lưu Secret key (đã xoá tin).\n\n"
                        "<b>Bước 2/2:</b> bấm nút dưới → đăng nhập tài khoản <b>Giám đốc</b> → chọn <b>The ORBIT</b> → "
@@ -96,7 +116,7 @@ def tra_loi(m):
     except Exception as x:
         j = {"messages": repr(x)[:150]}
     if j.get("code") != 1:
-        KN.pop(uid, None)
+        KN.pop(uid, None); _luu_kn()
         loi = j.get("messages") or j.get("errorCode") or "không rõ"
         TK.tsend(chat, f"❌ Nhanh từ chối: {TK.esc(str(loi)[:300])}\n"
                        "Nếu báo chưa cho phép Open API: vào Nhanh → Cài đặt → bật <b>Cho phép kết nối Open API</b> "
@@ -104,7 +124,7 @@ def tra_loi(m):
         return True
     d = j["data"]
     luu({"NHANH_ACCESS_TOKEN": d["accessToken"], "NHANH_BUSINESS_ID": d["businessId"], "NHANH_HET_HAN": d.get("expiredAt")})
-    KN.pop(uid, None)
+    KN.pop(uid, None); _luu_kn()
     het = ""
     try:
         het = time.strftime("%d/%m/%Y", time.localtime(int(d.get("expiredAt"))))
