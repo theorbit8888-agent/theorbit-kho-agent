@@ -201,7 +201,7 @@ def bao_cao(ngay=None, ghi=True):
             L.append(f"   ℹ️ {len(x['lay_khong_quet'])} kiện sàn ghi đã lấy mà kho không quét (quét sót?)")
         if ghi:
             ghi_07(ngay, san, x, co_quet)
-    ht, _ = huy_bao()
+    ht, _ = huy_tong_ket(ngay) if (ngay != KF.today() or datetime.now().hour >= 16) else huy_bao()
     if ht:
         L.append("\n" + ht)
     if la:
@@ -606,6 +606,32 @@ def huy_bao():
     L.append("Rút được kiện nào: chụp tem chú thích <code>/giulai</code> (hoặc gõ <code>/giulai MVĐ …</code>) → bot gạch. "
              "Sau đó bóc kiện, trả hàng lên kệ.")
     return "\n".join(L), len(cho)
+
+
+def huy_tong_ket(ngay=None):
+    """Cuối ngày: TẤT CẢ đơn huỷ sau khi in/gói của ngày (cả kiện đã giữ) + kiện ngày trước còn treo → kho đếm khay đơn huỷ."""
+    ngay = ngay or KF.today()
+    xs = [x for x in HUY.values() if x.get("huy") == ngay or not x.get("giu")]
+    if not xs:
+        return "", 0
+    f = lambda ys: ", ".join(f"<code>{esc(x['ma'])}</code>" for x in ys[:25]) + (f" … (+{len(ys) - 25})" if len(ys) > 25 else "")
+    giu = [x for x in xs if x.get("giu")]
+    da_giao = [x for x in xs if not x.get("giu") and x.get("quet")]
+    chua = [x for x in xs if not x.get("giu") and not x.get("quet")]
+    dem = {}
+    for x in xs:
+        dem[SAN_KENH.get(x["kenh"], x["kenh"])] = dem.get(SAN_KENH.get(x["kenh"], x["kenh"]), 0) + 1
+    L = [f"⛔ <b>TỔNG KẾT ĐƠN HUỶ SAU KHI IN/GÓI</b> {ngay[8:10]}/{ngay[5:7]}: <b>{len(xs)}</b> đơn ("
+         + " · ".join(f"{k} {v}" for k, v in dem.items()) + ")"]
+    if giu:
+        L.append(f"✅ Kho đã giữ <b>{len(giu)}</b> kiện → <b>đếm khay đơn huỷ phải đủ {len(giu)} kiện</b>, bóc ra trả hàng lên kệ: {f(giu)}")
+    if chua:
+        L.append(f"❓ <b>{len(chua)} kiện chưa thấy</b> → tìm ở khay giao/kệ trước khi về; không thấy = nghi shipper đã lấy, "
+                 f"báo trưởng kho xem camera: {f(chua)}")
+    if da_giao:
+        L.append(f"🚨 <b>{len(da_giao)} kiện đã huỷ mà kho đã giao shipper</b> → đòi shipper trả lại: {f(da_giao)}")
+    L.append("Tìm được kiện nào: chụp tem chú thích <code>/giulai</code>.")
+    return "\n".join(L), len(chua) + len(da_giao)
 
 
 def canh_huy(send=False):

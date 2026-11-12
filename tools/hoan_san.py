@@ -55,6 +55,10 @@ def kho_09():
     out = []
     for r in TG.rows(TK.HOAN, fresh=True):
         blob = " ".join(str(v) for k, v in r.items() if not k.startswith("_")).lower()
+        m = str(r.get("MVĐ") or "")
+        o = (NH.don_theo_ma(m) or NH.don_theo_ma(m.split("-")[0])) if m and NH.meta() else None
+        if o:   # kiện kho quét → đơn Nhanh → mã đơn sàn (TikTok trả hàng dùng MVĐ hoàn khác MVĐ gửi)
+            blob += " " + " ".join(str(o.get(k, "")) for k in ("ma_san", "mvd", "id")).lower()
         out.append((blob, r))
     return out
 
@@ -72,7 +76,7 @@ def tim_09(x, rows):
 
 def kho_txt(r):
     if not r:
-        return "kho chưa nhận"
+        return "kho chưa quét /hoan"
     if not r.get("Người nhận"):
         return "kho chưa nhận (sàn đã báo hoàn)"
     tt = str(r.get("Tình trạng") or "")
