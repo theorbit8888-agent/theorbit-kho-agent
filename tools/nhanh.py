@@ -229,6 +229,28 @@ def ton_sku(sku):
     return products().get(str(sku).upper()) or products().get(str(sku))
 
 
+def bung_combo(ma, sl=1):
+    """SKU combo CB-… → [(SKU con, SL)] (theo thành phần combo trên Nhanh); SKU thường → [(ma, sl)]."""
+    p = products().get(str(ma)) or {}
+    if p.get("combo"):
+        return [(c["ma"], (c.get("sl") or 1) * sl) for c in p["combo"]]
+    return [(str(ma), sl)]
+
+
+def ton_combo(ma):
+    """Số combo bán được = min(có thể bán SP con // SL trong combo). None nếu không phải combo / thiếu dữ liệu."""
+    p = products().get(str(ma)) or {}
+    if not p.get("combo"):
+        return None
+    xs = []
+    for c in p["combo"]:
+        con = products().get(c["ma"]) or {}
+        if con.get("co_the_ban") is None:
+            return None
+        xs.append(max(0, int(con["co_the_ban"])) // max(1, int(c.get("sl") or 1)))
+    return min(xs) if xs else None
+
+
 def link_sp(sku):
     import urllib.parse
     return f"https://nhanh.vn/product/item/index?name={urllib.parse.quote(sku)}&businessId={BIZ}"
@@ -314,6 +336,11 @@ def sau_sync():
                         "canhhuy", "--send"], timeout=120)
     except Exception as e:
         print("canh huy loi:", e)
+    try:   # hàng về đã nhập Nhanh chưa / nhập đúng số chưa (đối chiếu phiếu nhập)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "kho_flow.py"),
+                        "nhapnhanh", "--send"], timeout=180)
+    except Exception as e:
+        print("doi chieu nhap loi:", e)
 
 
 if __name__ == "__main__":

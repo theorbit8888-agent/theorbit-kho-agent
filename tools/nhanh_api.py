@@ -112,7 +112,23 @@ def products():
         prods[x["code"]] = {"ten": x.get("name"), "ton": ton, "trong_kho": None if ton is None else ton - giao,
                             "co_the_ban": _so(inv.get("available")), "dang_giao": _so(inv.get("shipping")),
                             "giu": _so(inv.get("holding")), "loi": _so(inv.get("damaged"))}
+        if x.get("combos"):   # combo CB-…: tồn tính theo SP con, bán combo = bán SP con
+            prods[x["code"]]["combo"] = [{"ma": c.get("code"), "sl": _so(c.get("quantity")) or 1} for c in x["combos"] if c.get("code")]
     return prods
+
+
+def phieu_nhap(tu, den=None):
+    """Phiếu NHẬP kho (type 1: mode 5 nhập NCC, 10 nhập khác) từ ngày tu → [{id, ngay, kho, mo_ta, sp: {SKU: SL}}]. Chỉ đọc."""
+    den = den or datetime.now().strftime("%Y-%m-%d")
+    out = []
+    for b in tat_ca("bill/list", {"fromDate": tu, "toDate": den, "type": 1, "modes": [5, 10]}, toi_da=20, sort=False):
+        sp = {}
+        for p in b.get("products") or []:
+            if p.get("code"):
+                sp[p["code"]] = sp.get(p["code"], 0) + (_so(p.get("quantity")) or 0)
+        out.append({"id": str(b.get("id")), "ngay": str(b.get("date") or ""), "kho": str(b.get("depotId") or ""),
+                    "mo_ta": str(b.get("description") or "")[:80], "sp": sp})
+    return out
 
 
 def orders(ngay=14):

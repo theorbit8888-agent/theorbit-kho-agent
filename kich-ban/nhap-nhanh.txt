@@ -1,0 +1,39 @@
+# Hàng về → đối chiếu mã Nhanh → 05 theo size → đối chiếu phiếu nhập Nhanh (tự tick / báo lệch) · combo · 10h15
+nhanh-gia
+la kho
+kho: /dathang REDLINE TEE 60 về 15-18/11
+xem SP 05 · TÌNH TRẠNG HÀNG
+# CÓ HÀNG 1 PHẦN: chỉ về size M (Nhanh còn L, hết S/XL) → 05 chỉ cho CSKH nói M, L
+kho: /hangve\
+Kho: Q2\
+TS-H2-REDLINE-M 20 20 0
+xem SP 05 · TÌNH TRẠNG HÀNG
+# KHÔNG ÁP DỤNG / CHẶN: mẫu không có trên Nhanh, size không có → không ghi, hỏi lại; dòng đúng vẫn ghi
+kho: /hangve\
+Kho: Q2\
+MAU KHONG TON TAI M 10 10 0\
+TS-H2-REDLINE-3XL 5 5 0\
+SO-A4-RIVET-M 40 38 2
+# mẫu mới chưa tạo SKU: ghi "Mới: có" → nhận, nhắc tạo SKU trước
+kho: /hangve\
+Mới: có\
+Kho: Q2\
+MAU KHONG TON TAI M 10 10 0
+# phiếu nhập Nhanh: REDLINE đúng 20 → tự tick; RIVET nhập 38 (gồm 2 lỗi) → báo lệch 1 lần
+nhanh-phieu 180001 TS-H2-REDLINE-M:20,SO-A4-RIVET-M:38
+doichieu-nhap
+doichieu-nhap
+# kho sửa: phiếu mới đúng 36 → khớp, tự tick
+nhanh-phieu 180002 SO-A4-RIVET-M:36
+doichieu-nhap
+xem SP 03 · NHẬP KHO
+# kho tự gõ ID phiếu SAI cho lô mẫu mới
+bam 1 @6
+tra 999999
+# combo: tồn theo SP con, dự báo cộng bán combo vào SP con (Rivet M bán 38 + 4 combo)
+kho: /nhanh CB-RIVETREDLINE-ML
+dubao
+# 10h15 trước shipper: 1 đơn khách huỷ sau in
+nhanh-don
+nhanh-st SPXVN2003 63
+gio10

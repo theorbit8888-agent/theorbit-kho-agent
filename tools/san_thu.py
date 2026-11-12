@@ -28,6 +28,9 @@ HƯỚNG DẪN (mỗi dòng):
   canlay tt.csv sp.csv    giả 7h30 bước 3b: in mã đơn bot sẽ bấm Tải đơn trên Nhanh
   nhanh-them MÃ MVĐ kênh SKU   giả bấm Tải đơn xong: Nhanh có thêm đơn (chờ gửi)
   thieu                   in sổ "đơn sàn mà Nhanh chưa có" (như nhắc 9h/17h)
+  nhanh-phieu ID SKU:SL,SKU:SL   giả kho tạo phiếu nhập trên Nhanh (hôm nay)
+  doichieu-nhap           như sau mỗi lần đồng bộ Nhanh: đối chiếu phiếu nhập ↔ hàng về (03), tự tick / báo lệch
+  gio10                   chạy lượt 10h15 (đơn huỷ sau in trước khi shipper lấy)
   canhhuy                 như sau mỗi lần đồng bộ Nhanh: báo đơn vừa huỷ sau khi in (rút kiện)
   hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
@@ -221,6 +224,9 @@ xuat_kho.SAN_DIR = os.path.join(SAN, "san")
 xuat_kho.HUY_F = os.path.join(SAN, "huy_sau_in.json")
 xuat_kho.THIEU_F = os.path.join(SAN, "nhanh_thieu.json")
 xuat_kho.LAY_F = os.path.join(SAN, "san", "lay_nhanh.json")
+kho_flow.NHAP_ST = os.path.join(SAN, "nhap_nhanh.json")
+PHIEU_F = os.path.join(SAN, "phieu_nhap.json")   # phiếu nhập Nhanh giả (nhanh-phieu)
+kho_flow.phieu_nhap = lambda tu: [b for b in (json.load(open(PHIEU_F)) if os.path.exists(PHIEU_F) else []) if b["ngay"] >= tu]
 import hoan_san  # noqa: E402
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 TK.init(dict(ENV), start_worker=False)
@@ -329,12 +335,14 @@ def dong(line):
               "SO-A4-RIVET-L": ("ORBIT RIVET WASHED SHORTS - L", 10, 12), "SO-A4-RIVET-XL": ("ORBIT RIVET WASHED SHORTS - XL", 55, 6),
               "TS-H2-REDLINE-M": ("REDLINE TEE - M", 0, 17), "TS-H2-REDLINE-L": ("REDLINE TEE - L", 5, 9),
               "TS-D2-ARCHIVE-S": ("ARCHIVE TEE - S", 234, 8)}
-        json.dump({k: {"ten": v[0], "co_the_ban": v[1], "trong_kho": v[1]} for k, v in sp.items()},
-                  open(os.path.join(NH.CACHE, "products.json"), "w"))
+        pr = {k: {"ten": v[0], "co_the_ban": v[1], "trong_kho": v[1]} for k, v in sp.items()}
+        pr["CB-RIVETREDLINE-ML"] = {"ten": "COMBO RIVET M + REDLINE L", "co_the_ban": 0, "trong_kho": 0,
+                                    "combo": [{"ma": "SO-A4-RIVET-M", "sl": 1}, {"ma": "TS-H2-REDLINE-L", "sl": 1}]}
+        json.dump(pr, open(os.path.join(NH.CACHE, "products.json"), "w"))
         json.dump({str(i): {"id": str(i), "kenh": "tiktok", "ma_san": f"58{i:010d}", "mvd": f"GIA{i:06d}", "dvvc": "",
                             "st": 60, "st_ten": "Thành công", "tao": time.strftime("%Y-%m-%d 09:00:00"), "cap_nhat": "",
                             "gui_dvvc": "", "kho": "KHO TỔNG - CN QUẬN 2", "sp": [{"ma": k, "sl": v[2]}]}
-                   for i, (k, v) in enumerate(sp.items())},
+                   for i, (k, v) in enumerate(list(sp.items()) + [("CB-RIVETREDLINE-ML", ("", 0, 4))])},
                   open(os.path.join(NH.CACHE, "orders.json"), "w"))
         json.dump({"dong_bo": time.strftime("%Y-%m-%d %H:%M")}, open(os.path.join(NH.CACHE, "meta.json"), "w"))
         return print("   (đã nạp Nhanh giả: Rivet, Redline, Archive)")
@@ -387,6 +395,27 @@ def dong(line):
                    "sp": [{"ma": sku, "sl": 1}]}
         json.dump(od, open(p, "w"))
         return print(f"   (Nhanh có thêm đơn {ma_} {mvd})")
+    if cmd == "nhanh-phieu":   # nhanh-phieu 180001 TS-H2-REDLINE-M:20,SO-A4-RIVET-M:38
+        bid, _, ds = rest.partition(" ")
+        bs = json.load(open(PHIEU_F)) if os.path.exists(PHIEU_F) else []
+        bs.append({"id": bid, "ngay": time.strftime("%Y-%m-%d"), "kho": "", "mo_ta": "",
+                   "sp": {k: int(v) for k, v in (x.split(":") for x in ds.split(",") if ":" in x)}})
+        json.dump(bs, open(PHIEU_F, "w"))
+        return print(f"   (Nhanh: phiếu nhập {bid} {ds})")
+    if cmd == "doichieu-nhap":
+        return print(re.sub(r"<[^>]+>", "", kho_flow.doi_chieu_nhap(True)) and "" or "   (không có gì mới để báo)")
+    if cmd == "gio10":
+        import datetime as _dt
+        class _D(_dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return _dt.datetime.now().replace(hour=10, minute=15)
+        kho_flow.datetime = _D
+        try:
+            kho_flow.hen(True)
+        finally:
+            kho_flow.datetime = _dt.datetime
+        return
     if cmd == "thieu":
         return print(re.sub(r"<[^>]+>", "", xuat_kho.thieu_bao()) or "   (sổ Nhanh thiếu: trống)")
     if cmd == "doisoat":     # chạy đối soát chiều (17h) như lịch

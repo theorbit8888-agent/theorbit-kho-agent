@@ -10,7 +10,7 @@
   /kiemkho  kiểm kho: "SKU  tồn Nhanh  đếm thực tế" → ghi 10, chỉ ra lệch; nút "Đã điều chỉnh Nhanh"
   /kho      menu + mẫu chép
 Lịch (launchd vn.theorbit.kho-agent.flow, `kho_flow.py hen`): 9:02 gợi ý mẫu kiểm kho hôm nay + kiện sàn báo hoàn
-mà chưa nhận; 17:00 nhắc chốt ca (2 mẫu); 18:00 nhắc lại nếu chưa chốt.
+mà chưa nhận; 10:15 đơn huỷ sau in còn trong khay (trước shipper ~10h30); 17:00 nhắc chốt ca (2 mẫu); 18:00 nhắc lại nếu chưa chốt.
 Đăng ký vào ticket.py (EXT_CMDS / EXT_CB / EXT_REPLY) nên chạy chung hàng đợi, chung listener kho.
 """
 import os, re, subprocess, sys, time
@@ -139,6 +139,33 @@ def goi_y_sku(chat, reply_to, tu=""):
           + ("\nHoặc bấm hàng đang chờ về:" if nut else ""), nut or None, reply_to=reply_to)
 
 
+def giai_ma(mau, size):
+    """Mẫu kho gõ → (mã mẫu Nhanh | "", tên chuẩn, lỗi). lỗi = "" (ổn) | "size" (mẫu có, size không có) | "khong" (không thấy).
+    Thứ tự: mã mẫu đúng · SKU đầy đủ trên Nhanh · tên khớp đúng 1 mẫu."""
+    up = mau.upper().strip()
+    bang = sku_bang()
+    ma = up if up in bang else ""
+    if not ma and NH.meta() and NH.ton_sku(f"{up}-{size}" if size else up):
+        return up, (NH.ton_sku(f"{up}-{size}" if size else up) or {}).get("ten") or up, ""
+    if not ma:
+        ten_ = tim_ten(mau)
+        ma = next((k for k, v in bang.items() if v[0] == ten_), "") if ten_ else ""
+    if not ma:
+        return "", mau, "khong"
+    sizes = [x.upper() for x in bang[ma][1]]
+    if size and sizes and size.upper() not in sizes and not (NH.meta() and NH.ton_sku(f"{ma}-{size}")):
+        return ma, bang[ma][0], "size"
+    return ma, bang[ma][0], ""
+
+
+def dang_dat(mau):
+    """Mẫu đang có ở 02 (đặt lại/chốt SX) hoặc 05 (sắp mở bán) → mẫu mới chưa có SKU Nhanh vẫn nhận hàng về được."""
+    try:
+        return any(khop(mau, str(r.get("Tên sản phẩm", ""))) for t in (DAT, TINH) for r in TG.rows(t))
+    except Exception:
+        return False
+
+
 def khop(mau, name):
     """Dòng bảng 02/05 (tên) có phải mẫu này không."""
     n = name.lower()
@@ -151,10 +178,13 @@ def hangve(m, arg):
     chat, u = m["chat"]["id"], m.get("from") or {}
     who = ten(u)
     ncc, kho, items, bo = "", "Kho Tổng Q2", [], []
+    moi_ok = False
     for line in [x.strip() for x in arg.splitlines() if x.strip() and not x.strip().startswith("(")]:
         low = line.lower()
         if low.startswith(("ncc", "xưởng", "xuong", "nhà cung cấp")) and ":" in line:
             ncc = line.split(":", 1)[-1].strip(); continue
+        if low.startswith(("mới", "moi", "mẫu mới", "mau moi")) and ":" in line:
+            moi_ok = True; continue
         if low.startswith("kho") and ":" in line:
             v = line.split(":", 1)[-1].strip().lower()
             kho = next((k2 for k1, k2 in KHO_TEN.items() if k1 in v), kho); continue
@@ -166,6 +196,25 @@ def hangve(m, arg):
     if not items:
         tu = " ".join(bo).strip()
         return goi_y_sku(chat, m["message_id"], tu)
+    # đối chiếu từng dòng với mã Nhanh: dòng không ra mẫu thì KHÔNG ghi (nhập Nhanh sai mã = lệch tồn), hỏi lại
+    chuan, hoi, chua_nh = [], [], []
+    for mau, size, nums in items:
+        ma, ten_, loi = giai_ma(mau, size)
+        if not loi:
+            chuan.append((ma, size, nums)); continue
+        if loi == "khong" and (moi_ok or dang_dat(mau)):   # mẫu mới (đang đặt/sắp mở bán) chưa có SKU Nhanh
+            chuan.append((mau, size, nums)); chua_nh.append(mau); continue
+        goi = tim_sku(mau.split()[0] if mau.split() else mau, 3) if loi == "khong" else []
+        hoi.append(f"• <code>{esc(mau)} {esc(size)}</code>: " + (
+            f"mẫu {esc(ten_)} không có size {esc(size)} trên Nhanh (có: {esc(' '.join(sku_bang()[ma][1]))})" if loi == "size"
+            else "không thấy mẫu này trên Nhanh" + (" — có phải: " + ", ".join(f"<code>{esc(k)}</code> {esc(t)}" for k, t, _ in goi) if goi else "")))
+    items = chuan
+    if hoi:
+        tsend(chat, "❓ <b>Chưa ghi các dòng này</b> (không khớp mã Nhanh → nhập Nhanh dễ sai mã, lệch tồn):\n" + "\n".join(hoi)
+              + "\n→ Sửa mã/size rồi gửi lại riêng các dòng đó (gõ <code>/hangve tên mẫu</code> để bot đưa sẵn mã). "
+                "Mẫu mới chưa tạo trên Nhanh: thêm dòng <code>Mới: có</code>.", reply_to=m["message_id"])
+    if not items:
+        return
     fid = max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"] if m.get("photo") else ""
     dot = f"HV{m['message_id']}"
     rows, L = [], []
@@ -203,6 +252,8 @@ def hangve(m, arg):
          + (f" · thừa {tong['thua']}" if tong["thua"] else "") + (f" · lỗi {tong['loi']}" if tong["loi"] else "")
          + (f"\n🔄 {cap}" if cap else "")
          + (f"\n⚠️ Bỏ qua dòng không đọc được: {esc('; '.join(bo))[:200]}" if bo else "")
+         + (f"\n🆕 Chưa có mã trên Nhanh: {esc(', '.join(dict.fromkeys(chua_nh)))} → <b>tạo SKU trên Nhanh trước</b> rồi mới nhập kho Nhanh"
+            if chua_nh else "")
          + ("\n\n⚠️ Lệch/lỗi: lập biên bản với shipper/NCC, báo NCC trong 2h." if van_de else "")
          + "\n➡️ Nhập Nhanh.vn theo <b>số thực tế</b> rồi bấm nút.")
     TK.STATE_KF[dot] = ids
@@ -215,6 +266,181 @@ def hangve(m, arg):
             tsend(o, "⚠️ <b>Hàng về lệch/lỗi</b>\n" + t)
 
 
+def tinh_05(mau, g, r):
+    """Dòng 05 sau hàng về, THEO SIZE: size của dòng (trống = mọi size của mẫu) đều đã có (vừa về hoặc Nhanh còn bán)
+    → Còn hàng; về 1 phần → vẫn Còn hàng nhưng CSKH chỉ được nói các size đã có; dòng size khác không về → không sửa."""
+    ve = g["sz"]
+    dong = {x for x in re.split(r"[\s,/;]+", str(r.get("Size/màu") or "").upper()) if x in SIZES}
+    ma = mau.upper() if mau.upper() in sku_bang() else ""
+    tat_ca = dong or {x.upper() for x in (sku_bang().get(ma, ("", []))[1] if ma else [])}
+    goc = {"Cập nhật lúc": today(), "Ghi chú kho": f"Về {datetime.now():%d/%m}: {' '.join(g['size']) or g['sl']}"}
+    if not ve or not tat_ca:   # kho không ghi size / không biết mẫu có size gì → như cũ
+        return dict(goc, **{"Tình trạng": "Còn hàng", "Hàng về dự kiến": "",
+                            "CSKH được nói": "Mẫu này shop đã có hàng, bạn chốt size để shop lên đơn nha"})
+    if dong and not (dong & ve):
+        return None
+    con_ban = {x for x in tat_ca - ve if ma and NH.meta() and ((NH.ton_sku(f"{ma}-{x}") or {}).get("co_the_ban") or 0) > 0}
+    co = (tat_ca & ve) | con_ban
+    thieu = tat_ca - co
+    thu = [x for x in ("XS", "S", "M", "L", "XL", "XXL", "2XL", "3XL", "FREE", "F") if x in co]
+    if not thieu:
+        return dict(goc, **{"Tình trạng": "Còn hàng", "Hàng về dự kiến": "",
+                            "CSKH được nói": f"Mẫu này shop đã có hàng size {', '.join(thu)}, bạn chốt size để shop lên đơn nha"})
+    tx = [x for x in ("XS", "S", "M", "L", "XL", "XXL", "2XL", "3XL", "FREE", "F") if x in thieu]
+    return dict(goc, **{"Tình trạng": "Còn hàng", "_thieu": " ".join(tx),
+                        "Ghi chú kho": goc["Ghi chú kho"] + f" · size {' '.join(tx)} chưa có",
+                        "CSKH được nói": f"Mẫu này shop đã có lại size {', '.join(thu)}; size {', '.join(tx)} chưa có hàng, "
+                                         "shop báo bạn khi về nha"})
+
+
+# ======================= đối chiếu PHIẾU NHẬP NHANH (tự tick "Đã nhập Nhanh", bắt nhập sai số) =======================
+
+NHAP_ST = os.path.join(ROOT, "logs", "nhap_nhanh.json")
+
+
+def phieu_nhap(tu):
+    """Phiếu nhập kho Nhanh từ ngày tu (Open API, chỉ đọc). None = không có API."""
+    import nhanh_api as NA
+    return NA.phieu_nhap(tu) if NA.co_api() else None
+
+
+def sku_dong(r):
+    """Dòng 03 → ({SKU: SL nhập kho}, {SKU: SL lỗi}). Tên 'ARCHIVE TEE (TS-D2-ARCHIVE)' + size, hoặc 'M 50, L 98'."""
+    ten_ = str(r.get("Tên sản phẩm") or "")
+    m = re.search(r"\(([A-Z0-9]+(?:-[A-Z0-9]+)+)\)", ten_)
+    ma = m[1] if m else (giai_ma(ten_, "")[0] or "")
+    if not ma:
+        return {}, {}
+    sz = str(r.get("Size/màu") or "").upper()
+    cap = re.findall(r"(?<![A-Z0-9])(XXL|2XL|3XL|XS|XL|FREE|S|M|L|F)\s+(\d+)", sz)
+    if cap:
+        return {f"{ma}-{x}": int(n) for x, n in cap}, {}
+    x = next((t for t in reversed(re.split(r"[\s,/;]+", sz)) if t in SIZES), "")
+    k = f"{ma}-{x}" if x else ma
+    n = int(TK.tien(r.get("SL nhập kho")) or 0)
+    return ({k: n} if n else {}), {k: int(TK.tien(r.get("SL lỗi QC")) or 0)}
+
+
+def doi_chieu_nhap(send=False):
+    """Dòng 03 chưa tick 'Đã nhập Nhanh' (14 ngày) ↔ phiếu nhập Nhanh. Khớp đủ SKU + SL → tự tick; cùng SKU mà khác SL
+    → báo lệch 1 lần (tồn Nhanh đang sai). Trả text đã/sẽ gửi."""
+    import json
+    han = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
+    tat = TG.rows(NHAP, fresh=True)
+    cho = [r for r in tat if not r.get("Đã nhập Nhanh.vn") and str(r.get("Ngày nhận") or "") >= han]
+    if not cho:
+        return ""
+    tu = (datetime.strptime(min(str(r.get("Ngày nhận"))[:10] for r in cho), "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    bills = phieu_nhap(tu)
+    if bills is None:
+        return ""
+    dung = set()   # (phiếu, SKU) đã gán cho dòng đã tick
+    for r in tat:
+        if r.get("Đã nhập Nhanh.vn"):
+            for bid in re.findall(r"\d{4,}", str(r.get("ID phiếu nhập Nhanh") or "")):
+                dung |= {(bid, k) for k in sku_dong(r)[0]}
+    try:
+        st = json.load(open(NHAP_ST))
+    except Exception:
+        st = {}
+    lo = {}
+    for r in cho:
+        lo.setdefault(str(r.get("Nguồn tin") or f"{r.get('Ngày nhận')}·{r.get('Tên sản phẩm')}"), []).append(r)
+    ok, lech = [], []
+    for key, rs in lo.items():
+        can, loi = {}, {}
+        for r in rs:
+            a, b = sku_dong(r)
+            for k, v in a.items():
+                can[k] = can.get(k, 0) + v
+            for k, v in b.items():
+                loi[k] = loi.get(k, 0) + v
+        if not can:
+            continue
+        ngay = (datetime.strptime(min(str(r.get("Ngày nhận"))[:10] for r in rs), "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+        bs = [b for b in bills if b["ngay"] >= ngay]
+        hop = None
+        for b in bs:   # 1 phiếu có đủ mọi SKU của lô
+            if all(k in b["sp"] and (b["id"], k) not in dung for k in can):
+                diff = {k: b["sp"][k] for k, v in can.items() if b["sp"][k] != v}
+                if not diff:
+                    hop = ([b["id"]], {}); break
+                hop = hop or ([b["id"]], diff)
+        if not hop or hop[1]:   # lô chia nhiều phiếu: mỗi SKU khớp đúng SL ở 1 phiếu
+            ids = []
+            for k, v in can.items():
+                b = next((b for b in bs if b["sp"].get(k) == v and (b["id"], k) not in dung), None)
+                if not b:
+                    ids = []; break
+                ids.append(b["id"])
+            if ids:
+                hop = (list(dict.fromkeys(ids)), {})
+        if not hop:
+            continue
+        ids, diff = hop
+        ten_ = ", ".join(dict.fromkeys(re.sub(r"\s*\([^)]*\)\s*$", "", str(r.get("Tên sản phẩm") or "")) for r in rs))
+        if not diff:
+            for r in rs:
+                TG.kho("update", table=TG.sname(NHAP), id=r["_id"],
+                       fields={"Đã nhập Nhanh.vn": "✓", "ID phiếu nhập Nhanh": ", ".join(ids) + " (bot đối chiếu)"})
+            dung |= {(i, k) for i in ids for k in can}
+            ok.append(f"• {esc(ten_)} về {str(rs[0].get('Ngày nhận'))[8:10]}/{str(rs[0].get('Ngày nhận'))[5:7]}: "
+                      f"phiếu <code>{', '.join(ids)}</code> — {sum(can.values())} cái khớp")
+            st.pop(key, None)
+            continue
+        dau = json.dumps([ids, diff], sort_keys=True)
+        if st.get(key) == dau:
+            continue   # đã báo lệch này rồi
+        st[key] = dau
+        lech.append(f"• {esc(ten_)} · phiếu <code>{ids[0]}</code>: " + "; ".join(
+            f"{esc(k)} Nhanh <b>{nb}</b> ≠ kho kiểm <b>{can[k]}</b>"
+            + (" (Nhanh nhập cả hàng lỗi QC?)" if loi.get(k) and nb == can[k] + loi[k] else "") for k, nb in diff.items()))
+    TG._CACHE.pop(TG.sname(NHAP), None)
+    os.makedirs(os.path.dirname(NHAP_ST), exist_ok=True)
+    json.dump(st, open(NHAP_ST, "w"), ensure_ascii=False, indent=1)
+    L = []
+    if ok:
+        L.append("✅ <b>Bot đã đối chiếu phiếu nhập Nhanh</b> (khớp số kho kiểm, tự tick Đã nhập Nhanh):\n" + "\n".join(ok))
+    if lech:
+        L.append("⚠️ <b>PHIẾU NHẬP NHANH LỆCH SỐ KHO KIỂM</b> → tồn Nhanh đang sai, sửa phiếu trên Nhanh theo <b>số thực tế</b> "
+                 "(hàng lỗi QC không nhập vào tồn bán):\n" + "\n".join(lech))
+    t = "\n\n".join(L)
+    if t:
+        print(re.sub(r"<[^>]+>", "", t))
+        if send and kchat():
+            tsend(kchat(), t)
+    return t
+
+
+def kiem_id_phieu(rids, t):
+    """Kho gõ ID phiếu nhập: so phiếu đó với các dòng 03 vừa tick. Trả 1 dòng ghi chú ("" nếu không kiểm được)."""
+    ids = re.findall(r"\d{4,}", t)
+    rs = [r for r in TG.rows(NHAP, fresh=True) if r.get("_id") in set(rids)]
+    if not ids or not rs:
+        return ""
+    try:
+        bills = phieu_nhap((datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d"))
+    except Exception as e:
+        print("kho_flow: đọc phiếu nhập lỗi", repr(e)[:200], flush=True)
+        return ""
+    if bills is None:
+        return ""
+    sp = {}
+    for b in bills:
+        if b["id"] in ids:
+            for k, v in b["sp"].items():
+                sp[k] = sp.get(k, 0) + v
+    if not sp:
+        return f"\n⚠️ Không thấy phiếu nhập <code>{esc(', '.join(ids))}</code> trên Nhanh (14 ngày) — gõ đúng ID chưa?"
+    can = {}
+    for r in rs:
+        for k, v in sku_dong(r)[0].items():
+            can[k] = can.get(k, 0) + v
+    sai = [f"{esc(k)} Nhanh {sp.get(k, 0)} ≠ kho {v}" for k, v in can.items() if sp.get(k, 0) != v]
+    return ("\n⚠️ <b>Phiếu Nhanh lệch số kho kiểm</b>: " + "; ".join(sai) + " → sửa phiếu theo số thực tế") if sai \
+        else "\n🔎 Bot đã đối chiếu: phiếu Nhanh khớp số kho kiểm."
+
+
 def cap_nhat_02_05(items, kho):
     """Cộng SL đã nhận vào 02, chuyển 05 sang Còn hàng, xuất file tình trạng cho CSKH. Trả câu tóm tắt."""
     out = []
@@ -223,10 +449,12 @@ def cap_nhat_02_05(items, kho):
         for mau, size, nums in items:
             thuc = nums[1] if len(nums) >= 2 else nums[0]
             loi = nums[2] if len(nums) >= 3 else 0
-            g = gom.setdefault(mau, {"sl": 0, "size": []})
+            g = gom.setdefault(mau, {"sl": 0, "size": [], "sz": set()})
             g["sl"] += thuc - loi
             if size:
                 g["size"].append(f"{size}{thuc - loi}")
+                if thuc - loi > 0:
+                    g["sz"].add(size.upper())
         for mau, g in gom.items():
             for r in TG.rows(DAT, fresh=True):
                 if khop(mau, str(r.get("Tên sản phẩm", ""))) and r.get("Trạng thái đặt") not in ("Đã về đủ", "Huỷ"):
@@ -239,13 +467,14 @@ def cap_nhat_02_05(items, kho):
                     out.append(f"02: {r.get('Tên sản phẩm')} {da}/{dat or '?'}")
                     break
             for r in TG.rows(TINH, fresh=True):
-                if khop(mau, str(r.get("Tên sản phẩm", ""))):
-                    TG.kho("update", table=TG.sname(TINH), id=r["_id"],
-                           fields={"Tình trạng": "Còn hàng", "Cập nhật lúc": today(), "Hàng về dự kiến": "",
-                                   "Ghi chú kho": f"Về {datetime.now():%d/%m}: {' '.join(g['size']) or g['sl']}",
-                                   "CSKH được nói": "Mẫu này shop đã có hàng, bạn chốt size để shop lên đơn nha"})
-                    out.append(f"05: {r.get('Tên sản phẩm')} → Còn hàng")
-                    break
+                if not khop(mau, str(r.get("Tên sản phẩm", ""))):
+                    continue
+                f = tinh_05(mau, g, r)
+                if f:
+                    thieu = f.pop("_thieu", "")
+                    TG.kho("update", table=TG.sname(TINH), id=r["_id"], fields=f)
+                    out.append(f"05: {r.get('Tên sản phẩm')} {r.get('Size/màu') or ''} → {f['Tình trạng']}"
+                               + (f" (size {thieu} chưa có)" if thieu else ""))
         TG._CACHE.clear()
         if out:
             subprocess.run([sys.executable, os.path.join(ROOT, "tools", "lark.py"), "export"], cwd=ROOT,
@@ -538,7 +767,8 @@ def du_bao():
         if o.get("st") in (58, 63, 64):  # huỷ
             continue
         for x in o.get("sp") or []:
-            ban[str(x.get("ma"))] = ban.get(str(x.get("ma")), 0) + int(x.get("sl") or 0)
+            for ma, sl in NH.bung_combo(str(x.get("ma")), int(x.get("sl") or 0)):   # bán combo = bán SP con
+                ban[ma] = ban.get(ma, 0) + int(sl)
     gom = {}
     for ma, p in NH.products().items():
         if ma.startswith(("TEST", "PK-A0-STICKER", "CB-")):
@@ -920,10 +1150,16 @@ def on_reply(m, p):
     if p["f"] == "kf_ddat":
         return dh_reply(m, p)
     if p["f"] == "kf_nhanh":
-        for rid in TK.STATE_KF.get(p["id"], []):
-            TG.kho("update", table=TG.sname(NHAP), id=rid, fields={"Đã nhập Nhanh.vn": "✓", "ID phiếu nhập Nhanh": t})
+        rids = TK.STATE_KF.get(p["id"], [])
+        kq = kiem_id_phieu(rids, t)   # có API Nhanh: so phiếu với số kho kiểm
+        sai = kq.startswith("\n⚠️")
+        for rid in rids:   # phiếu sai/không thấy → CHƯA tick, bot đối chiếu tiếp sau mỗi lần đồng bộ Nhanh
+            TG.kho("update", table=TG.sname(NHAP), id=rid,
+                   fields={"ID phiếu nhập Nhanh": t + " (⚠️ chưa khớp Nhanh)"} if sai else {"Đã nhập Nhanh.vn": "✓", "ID phiếu nhập Nhanh": t})
         TG._CACHE.pop(TG.sname(NHAP), None)
-        return tsend(chat, f"✅ Đã ghi phiếu nhập Nhanh <code>{esc(t)}</code>", reply_to=m["message_id"])
+        return tsend(chat, (f"📝 Đã ghi ID <code>{esc(t)}</code> nhưng <b>chưa tick Đã nhập Nhanh</b>" if sai
+                            else f"✅ Đã ghi phiếu nhập Nhanh <code>{esc(t)}</code>") + kq
+                     + ("\n→ Sửa trên Nhanh xong bot tự đối chiếu lại (30 phút/lần)." if sai else ""), reply_to=m["message_id"])
     if p["f"] == "kf_lechdi":
         for r in TG.rows(DS, fresh=True):
             if r.get("Ngày") == p["id"] and "khớp" not in str(r.get("Lệch/ghi chú", "")):
@@ -1060,6 +1296,24 @@ def hen(send=False):
         if send and kchat():
             tsend(kchat(), t)
         return
+    if h == 10:   # 10h15: TRƯỚC KHI SHIPPER LẤY (~10h30) — đơn huỷ sau in còn nằm trong khay giao → rút ra
+        try:
+            import nhanh_api as NA
+            if NA.co_api():
+                NA.sync()
+        except Exception as e:
+            print("kho_flow: đọc Nhanh 10h lỗi", repr(e)[:200], flush=True)
+        if not NH.con_moi(90):
+            return print("10h: Nhanh cũ, không báo")
+        xuat_kho.huy_cap_nhat()
+        ht, n = xuat_kho.huy_bao()
+        if not n:
+            return print("10h: không có đơn huỷ sau in cần rút")
+        t = "⏰ <b>10h15 — TRƯỚC KHI SHIPPER LẤY</b>: kiểm khay giao, rút các kiện này ra NGAY\n\n" + ht
+        print(re.sub(r"<[^>]+>", "", t))
+        if send and kchat():
+            tsend(kchat(), t)
+        return
     if h in (12, 18) and datetime.now().minute < 25:   # D004: 12h & 18h đối soát đơn đã in mà shipper chưa quét
         try:
             ts = xuat_kho.doi_soat_shipper()
@@ -1138,8 +1392,13 @@ def nhanh_tt(m, arg):
          + (f"\n⚠️ Lỗi gần nhất: {esc(mt.get('loi'))}" if mt.get("loi") else ""))
     if arg.strip():
         p = NH.ton_sku(arg.strip())
-        t += (f"\n<b>{esc(arg.strip().upper())}</b>: trong kho {p.get('trong_kho', '?')} · có thể bán {p.get('co_the_ban', '?')} · "
-              f"đang giao {p.get('dang_giao', '?')} · lỗi {p.get('loi', '?')}") if p else f"\nKhông thấy SKU {esc(arg)}"
+        if p and p.get("combo"):   # combo: Nhanh để tồn 0, tồn thật theo SP con
+            t += (f"\n<b>{esc(arg.strip().upper())}</b> là <b>combo</b> — bán được <b>{NH.ton_combo(arg.strip().upper()) if NH.ton_combo(arg.strip().upper()) is not None else '?'}</b> combo (theo SP con):"
+                  + "".join(f"\n• {esc(c['ma'])} ×{c.get('sl') or 1}: có thể bán {(NH.ton_sku(c['ma']) or {}).get('co_the_ban', '?')}"
+                            for c in p["combo"]))
+        else:
+            t += (f"\n<b>{esc(arg.strip().upper())}</b>: trong kho {p.get('trong_kho', '?')} · có thể bán {p.get('co_the_ban', '?')} · "
+                  f"đang giao {p.get('dang_giao', '?')} · lỗi {p.get('loi', '?')}") if p else f"\nKhông thấy SKU {esc(arg)}"
     else:
         t += "\n" + bao_nhanh_chot_ca()
     tsend(m["chat"]["id"], t, reply_to=m["message_id"])
@@ -1201,6 +1460,8 @@ if __name__ == "__main__":
         TK.setup(); setup(); print("đã tạo bảng 09, 10, cột ảnh bill")
     elif a[0] == "dubao":   # python3 tools/kho_flow.py dubao [--send]: chạy thử nhắc đặt hàng
         nhac_dat_hang("--send" in a)
+    elif a[0] == "nhapnhanh":   # sau mỗi lần đồng bộ Nhanh: đối chiếu phiếu nhập ↔ hàng về (03)
+        doi_chieu_nhap("--send" in a)
     elif a[0] == "hen":
         hen("--send" in a)
     elif a[0] == "sanbao":  # python3 tools/kho_flow.py sanbao '<json>' [--send] [--luon]
