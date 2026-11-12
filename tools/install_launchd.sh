@@ -54,7 +54,7 @@ cat > "$TK" <<EOF
   <key>StandardErrorPath</key><string>$DIR/logs/ticket-nhac.out</string>
 </dict></plist>
 EOF
-# Việc thủ kho (tools/kho_flow.py hen): 9:02 đầu ngày, 17:30 danh sách kiểm kho + kiện sàn báo hoàn chưa nhận; 17:00 chốt ca; 18:00 nhắc lại
+# Việc thủ kho (tools/kho_flow.py hen): 9:02 đầu ngày, 12:00 + 18:00 đối soát shipper (D004), 17:30 danh sách kiểm kho + kiện sàn báo hoàn chưa nhận; 17:00 chốt ca; 18:00 nhắc lại
 KF=~/Library/LaunchAgents/vn.theorbit.kho-agent.flow.plist
 cat > "$KF" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -67,6 +67,7 @@ cat > "$KF" <<EOF
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>StartCalendarInterval</key><array>
     <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>2</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>30</integer></dict>
     <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
@@ -117,4 +118,4 @@ cat > "$CHJ" <<EOF
 EOF
 # job đọc Nhanh ($NH) chỉ bật sau khi đăng nhập Nhanh (nhanh.py login tự bật)
 for p in "$PLIST" "$NHAC" "$TK" "$KF" "$CHJ"; do launchctl unload "$p" 2>/dev/null || true; launchctl load "$p"; done
-echo "Đã bật listener + cảnh báo 9h + ticket 9:05 + việc kho 9:02/17:00/17:30 kiểm kho/18:00. Log: $DIR/logs/listener.out, nhac.out, ticket-nhac.out, flow.out"
+echo "Đã bật listener + cảnh báo 9h + ticket 9:05 + việc kho 9:02/12:00 đối soát shipper/17:00/17:30 kiểm kho/18:00. Log: $DIR/logs/listener.out, nhac.out, ticket-nhac.out, flow.out"

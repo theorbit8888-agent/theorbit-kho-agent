@@ -1060,6 +1060,18 @@ def hen(send=False):
         if send and kchat():
             tsend(kchat(), t)
         return
+    if h in (12, 18) and datetime.now().minute < 25:   # D004: 12h & 18h đối soát đơn đã in mà shipper chưa quét
+        try:
+            ts = xuat_kho.doi_soat_shipper()
+        except BaseException as e:
+            ts = []
+            print("kho_flow: đối soát shipper lỗi", repr(e)[:200], flush=True)
+        for t in ts:
+            print(re.sub(r"<[^>]+>", "", t))
+            if send and kchat():
+                tsend(kchat(), t)
+        if h == 12:
+            return
     if h >= 18 and send:
         pd = phieu_diem()
         print(re.sub(r"<[^>]+>", "", pd))
@@ -1126,8 +1138,8 @@ def nhanh_tt(m, arg):
          + (f"\n⚠️ Lỗi gần nhất: {esc(mt.get('loi'))}" if mt.get("loi") else ""))
     if arg.strip():
         p = NH.ton_sku(arg.strip())
-        t += (f"\n<b>{esc(arg.strip().upper())}</b>: trong kho {p['trong_kho']} · có thể bán {p['co_the_ban']} · "
-              f"đang giao {p['dang_giao']} · lỗi {p['loi']}") if p else f"\nKhông thấy SKU {esc(arg)}"
+        t += (f"\n<b>{esc(arg.strip().upper())}</b>: trong kho {p.get('trong_kho', '?')} · có thể bán {p.get('co_the_ban', '?')} · "
+              f"đang giao {p.get('dang_giao', '?')} · lỗi {p.get('loi', '?')}") if p else f"\nKhông thấy SKU {esc(arg)}"
     else:
         t += "\n" + bao_nhanh_chot_ca()
     tsend(m["chat"]["id"], t, reply_to=m["message_id"])
