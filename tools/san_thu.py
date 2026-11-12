@@ -24,6 +24,10 @@ HƯỚNG DẪN (mỗi dòng):
   nhanh-don               nạp 9 đơn chờ gửi giả (thử /indon /giao /doisoat)
   nhanh-st MVĐ 59|63      giả Nhanh đồng bộ: ĐVVC đã lấy / khách huỷ
   doisoat                 chạy đối soát chiều như lịch 17h
+  so-san tt.csv sp.csv    giả 7h30: danh sách sàn cần gửi (csv "ma|mvd|tt|giao", - = không đọc được sàn) so với Nhanh
+  canlay tt.csv sp.csv    giả 7h30 bước 3b: in mã đơn bot sẽ bấm Tải đơn trên Nhanh
+  nhanh-them MÃ MVĐ kênh SKU   giả bấm Tải đơn xong: Nhanh có thêm đơn (chờ gửi)
+  thieu                   in sổ "đơn sàn mà Nhanh chưa có" (như nhắc 9h/17h)
   canhhuy                 như sau mỗi lần đồng bộ Nhanh: báo đơn vừa huỷ sau khi in (rút kiện)
   hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
@@ -216,6 +220,7 @@ xuat_kho.STATE = os.path.join(SAN, "xuat_kho.json")
 xuat_kho.SAN_DIR = os.path.join(SAN, "san")
 xuat_kho.HUY_F = os.path.join(SAN, "huy_sau_in.json")
 xuat_kho.THIEU_F = os.path.join(SAN, "nhanh_thieu.json")
+xuat_kho.LAY_F = os.path.join(SAN, "san", "lay_nhanh.json")
 import hoan_san  # noqa: E402
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 TK.init(dict(ENV), start_worker=False)
@@ -354,10 +359,36 @@ def dong(line):
         ma, so = rest.split()
         for o in od.values():
             if o["mvd"] == ma:
-                o["st"] = int(so); o["st_ten"] = {59: "Đang chuyển", 63: "Khách huỷ"}.get(int(so), so)
+                o["st"] = int(so); o["st_ten"] = {59: "Đang chuyển", 63: "Khách huỷ", 68: "Hết hàng", 60: "Thành công"}.get(int(so), so)
                 o["cap_nhat"] = time.strftime("%Y-%m-%d %H:%M:%S")
         json.dump(od, open(p, "w"))
         return print(f"   (Nhanh: {ma} → {so})")
+    if cmd in ("so-san", "canlay"):   # so-san kich-ban/so-tt.csv kich-ban/so-sp.csv
+        f = (rest.split() + ["-", "-"])[:2]
+        opt = {"--" + k: (os.path.join(ROOT, x) if not os.path.isabs(x) else x) for k, x in zip(("tiktok", "shopee"), f) if x != "-"}
+        d = xuat_kho.doc_csv_san(opt)
+        if cmd == "canlay":
+            out = xuat_kho.can_lay(d)
+            os.makedirs(os.path.dirname(xuat_kho.LAY_F), exist_ok=True)
+            json.dump(dict(out, ngay=xuat_kho.KF.today()), open(xuat_kho.LAY_F, "w"))
+            return print("   BOT SẼ BẤM TẢI ĐƠN:", json.dumps(out, ensure_ascii=False))
+        os.makedirs(xuat_kho.SAN_DIR, exist_ok=True)
+        fj = os.path.join(xuat_kho.SAN_DIR, xuat_kho.KF.today() + ".json")
+        json.dump(d, open(fj, "w"), ensure_ascii=False)
+        xuat_kho.so_san_file(fj, send=False, doi=False)
+        return
+    if cmd == "nhanh-them":   # nhanh-them 580000000000000099 TT9999 tiktok SO-A4-RIVET-L
+        ma_, mvd, k, sku = (rest.split() + ["", "", "SO-A4-RIVET-L"])[:4]
+        p = os.path.join(NH.CACHE, "orders.json")
+        od = json.load(open(p)) if os.path.exists(p) else {}
+        oid = str(9500 + len(od))
+        od[oid] = {"id": oid, "kenh": k, "ma_san": ma_, "mvd": mvd, "dvvc": "", "st": 42, "st_ten": "Đang đóng gói",
+                   "tao": time.strftime("%Y-%m-%d 07:00:00"), "cap_nhat": "", "gui_dvvc": "", "kho": "KHO TỔNG - CN QUẬN 2",
+                   "sp": [{"ma": sku, "sl": 1}]}
+        json.dump(od, open(p, "w"))
+        return print(f"   (Nhanh có thêm đơn {ma_} {mvd})")
+    if cmd == "thieu":
+        return print(re.sub(r"<[^>]+>", "", xuat_kho.thieu_bao()) or "   (sổ Nhanh thiếu: trống)")
     if cmd == "doisoat":     # chạy đối soát chiều (17h) như lịch
         return print(re.sub(r"<[^>]+>", "", xuat_kho.bao_chieu()[0]))
     if cmd == "canhhuy":

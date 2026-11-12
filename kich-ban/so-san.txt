@@ -1,0 +1,29 @@
+# 7h30 IN ĐƠN Ở SÀN: đọc Seller Center → so Nhanh → bấm Tải đơn đơn lệch → báo tồn lệch
+# Nhanh: TikTok TT1001-1004 + 1 đơn chưa MVĐ (589004), Shopee SPXVN2001-2003, Web GHN3001
+nhanh-gia
+nhanh-don
+# --- CA 1: KHỚP HẾT (Shopee đủ 3 đơn; TikTok không đọc được) ---
+so-san - kich-ban/so-khop.csv
+# --- CA 2: LỆCH ĐỦ KIỂU ---
+# TT1003: kho THỰC TẾ hết hàng → Nhanh chuyển "Hết hàng" (68) nhưng sàn vẫn bắt gửi
+nhanh-st TT1003 68
+# TT1004 (589003): sàn đã huỷ, Nhanh còn chờ → ⛔ du
+# 580000000000000099 + 251112ABCD1234: sàn có, Nhanh chưa có → 🔗 thieu
+# SPXVN2003 (589007): khách huỷ trên Nhanh, sàn cũng không còn → không lệch
+nhanh-st SPXVN2003 63
+canlay kich-ban/so-tt.csv kich-ban/so-sp.csv
+so-san kich-ban/so-tt.csv kich-ban/so-sp.csv
+thieu
+# --- CA 3: bấm Tải đơn xong, Nhanh kéo được 1 đơn TikTok; Shopee vẫn chưa về ---
+nhanh-them 580000000000000099 TT9999 tiktok SO-A4-RIVET-L
+canlay kich-ban/so-tt.csv kich-ban/so-sp.csv
+thieu
+# kho giao: quét cả kiện Shopee Nhanh không có + mã sai
+la kho
+kho: /giao TT9999 SPXVN7777 SPXVN2001 XYZ12345
+thieu
+# --- CA 4: Nhanh kéo nốt đơn Shopee → sổ sạch ---
+nhanh-them 251112ABCD1234 SPXVN7777 shopee TS-H2-REDLINE-M
+thieu
+# --- KHÔNG ÁP DỤNG: không đọc được cả 2 sàn ---
+so-san - -

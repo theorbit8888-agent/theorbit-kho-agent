@@ -315,8 +315,9 @@ def giao(m, arg):
             if not la_cho(o) and _d(o.get("gui_dvvc") or o.get("cap_nhat")) < KF.today():
                 cu.append(o)
     luu(s)
-    if la or ngoai:
-        thieu_ghi([{"ma": x} for x in la + ngoai], "kho /giao")
+    so = [x for x in la if ma_that(x)] + ngoai   # mã gõ sai/ngắn (VD XYZ123) không ghi sổ, chỉ báo ❓
+    if so:
+        thieu_ghi([{"ma": x, "kenh": kenh_theo_ma(x)} for x in so], "kho /giao")
     dem = {}
     for o in moi:
         dem[SAN_KENH.get(o["kenh"], o["kenh"])] = dem.get(SAN_KENH.get(o["kenh"], o["kenh"]), 0) + 1
@@ -474,7 +475,8 @@ def lech_san(d):
         out[k] = {"ds": ds,
                   "gap": [x for x in ds if x.get("hoa_toc") or "tốc" in str(x.get("giao", "")).lower()],
                   "thieu": [x for x in ds if not tim(x)],
-                  "huy_nh": [x for x in ds if (o := tim(x)) and la_huy(o)],
+                  # huỷ SAU lúc đọc sàn = khách huỷ sau đó (sổ "huỷ sau in" lo), không phải Nhanh ghi sai
+                  "huy_nh": [x for x in ds if (o := tim(x)) and la_huy(o) and (o.get("cap_nhat") or "") <= doc + ":59"],
                   "nh_cho": nh_cho,
                   # Mới/Chờ xác nhận: sàn còn để ở tab chờ xác nhận, không phải lệch
                   "du": [o for o in nh_cho if o["ma_san"].lower() not in san_ma and o["mvd"].lower() not in san_ma
@@ -515,6 +517,12 @@ def doc_csv_san(opt):
             if opt.get("--tong-" + k):
                 d["tong_" + k] = int(opt["--tong-" + k])
     return d
+
+
+def ma_that(m):
+    """Mã trông như mã đơn sàn / mã vận đơn thật (đủ dài, nhiều số) — để mã gõ sai không vào sổ theo dõi."""
+    m = str(m).strip().upper()
+    return bool(kenh_theo_ma(m)) or bool(re.fullmatch(r"[A-Z]{0,6}\d{9,}[A-Z0-9]*", m))
 
 
 def kenh_theo_ma(m):
@@ -587,6 +595,13 @@ def so_san(d, lan_dong_bo=0):
             thieu_ghi([dict(o, kenh=k) for o in thieu], "sàn cần gửi 7h30")
             lech_ton.append(f"   🔗 {SAN_KENH[k]}: <b>{len(thieu)} đơn Nhanh chưa có</b>{dl}{' (bấm Tải đơn rồi vẫn không về)' if lay else ''} → tồn Nhanh CHƯA TRỪ, dễ bán vượt: "
                             + ", ".join(f"<code>{esc(o['ma'])}</code>" for o in thieu[:30]) + (" …" if len(thieu) > 30 else ""))
+        het = [o for o in x["huy_nh"] if (nh := nh_idx().get(str(o["ma"]).lower()) or nh_idx().get(str(o.get("mvd", "")).lower()))
+               and (nh.get("st") == 68 or "hết hàng" in str(nh.get("st_ten", "")).lower())]
+        if het:
+            lech_ton.append(f"   🚫 {SAN_KENH[k]}: <b>{len(het)} đơn sàn cần gửi mà Nhanh báo HẾT HÀNG</b> → kho kiểm kệ: còn hàng thì gói gửi"
+                            " + báo người nhập Nhanh chỉnh tồn; hết thật thì báo chủ shop/CSKH xử lý đơn trên sàn (bot không huỷ): "
+                            + ", ".join(f"<code>{esc(o['ma'])}</code>" for o in het[:30]))
+            x["huy_nh"] = [o for o in x["huy_nh"] if o not in het]
         if x["huy_nh"]:
             lech_ton.append(f"   ⚠️ {SAN_KENH[k]}: <b>{len(x['huy_nh'])} đơn sàn vẫn cần gửi mà Nhanh ghi huỷ</b>{dl} → Nhanh đã nhả hàng,"
                             " tồn Nhanh CAO hơn thật (kiểm lại đơn trên sàn, đúng là cần gửi thì sửa trên Nhanh): "
@@ -597,7 +612,14 @@ def so_san(d, lan_dong_bo=0):
     luu(s)
     if co_nh:
         L.append("\n🧮 <b>ĐỐI SOÁT TỒN NHANH</b>")
-        L.extend(lech_ton or ["   🟢 Đơn sàn và Nhanh khớp — tồn Nhanh đã trừ đủ."])
+        chua = [SAN_KENH[k] for k in ("tiktok", "shopee") if d.get(k) is None]
+        if len(chua) == 2:
+            L.append("   ❔ Không đọc được sàn nào → hôm nay CHƯA đối soát tồn được (kiện /giao vẫn được so với Nhanh).")
+        else:
+            L.extend(lech_ton or [f"   🟢 {' + '.join(SAN_KENH[k] for k in ('tiktok', 'shopee') if d.get(k) is not None)}: đơn sàn và Nhanh"
+                                  " khớp — tồn Nhanh đã trừ đủ."])
+            if chua:
+                L.append(f"   ❔ {', '.join(chua)}: chưa đối soát (không đọc được sàn).")
         if lech_ton:
             L.append("   → Đơn 🔗: vào Nhanh › Đơn sàn › Lấy đơn kéo về (bot nhắc 9h + 17h mỗi ngày tới khi Nhanh có). Đơn ⛔: mai vẫn còn thì sửa trạng thái trên Nhanh.")
     else:
@@ -630,7 +652,8 @@ def thieu_ghi(xs, nguon):
     t = thieu_doc()
     for x in xs:
         k = str(x.get("ma") or "").lower()
-        if k and k not in t and not (x.get("mvd") and str(x["mvd"]).lower() in t):
+        da = set(t) | {str(v.get("mvd", "")).lower() for v in t.values() if v.get("mvd")}   # đã có theo mã đơn HOẶC MVĐ
+        if k and k not in da and not (x.get("mvd") and str(x["mvd"]).lower() in da):
             t[k] = {"ma": x["ma"], "mvd": x.get("mvd", ""), "kenh": x.get("kenh", ""), "tu": KF.today(), "nguon": nguon, "co": ""}
     thieu_luu(t)
 

@@ -1,0 +1,26 @@
+# CÓ HÀNG / SẮP HẾT / HẾT HÀNG / KHÔNG CÓ SKU — tra tồn, hàng về, dự báo
+nhanh-gia
+la kho
+# tra tồn: còn nhiều · sắp hết · hết · gõ thường · không có SKU · combo
+kho: /nhanh TS-D2-ARCHIVE-S
+kho: /nhanh SO-A4-RIVET-M
+kho: /nhanh TS-H2-REDLINE-M
+kho: /nhanh so-a4-rivet-m
+kho: /nhanh ABC-KHONG-CO
+kho: /nhanh CB-RANDOM-XL
+# hàng về cho mẫu ĐANG HẾT (Redline M = 0) → 05 phải chuyển còn hàng
+kho: /hangve\
+Kho: Q2\
+TS-H2-REDLINE-M: 20
+# hàng về LỆCH bill + có lỗi QC
+kho: /hangve\
+Kho: Q2\
+RIVET WASHED SHORTS M 40 38 2
+# hàng về mẫu không có trong Nhanh/01
+kho: /hangve\
+Kho: Q2\
+MAU KHONG TON TAI M 10 10 0
+xem SP 03 · NHẬP KHO
+xem SP 05 · TÌNH TRẠNG HÀNG
+# dự báo sau khi Redline về: Redline không nên còn bị nhắc hết
+dubao
