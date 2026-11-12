@@ -32,6 +32,7 @@ class H(BaseHTTPRequestHandler):
         NH._ghi("products.json", d["products"]); NH._ghi("orders.json", d["orders"]); NH._ghi("meta.json", m)
         self.send_response(200); self._cors(); self.end_headers(); self.wfile.write(b"OK")
         print("nhận", m["dong_bo"], m["so_sp"], m["so_don"], flush=True)
+        NH.sau_sync()
 
     def log_message(self, *a):
         pass

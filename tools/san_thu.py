@@ -24,6 +24,8 @@ HƯỚNG DẪN (mỗi dòng):
   nhanh-don               nạp 9 đơn chờ gửi giả (thử /indon /giao /doisoat)
   nhanh-st MVĐ 59|63      giả Nhanh đồng bộ: ĐVVC đã lấy / khách huỷ
   doisoat                 chạy đối soát chiều như lịch 17h
+  canhhuy                 như sau mỗi lần đồng bộ Nhanh: báo đơn vừa huỷ sau khi in (rút kiện)
+  hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   # ...                   ghi chú, bỏ qua
 Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng sau.
@@ -210,6 +212,9 @@ kho_flow.DH_STATE = os.path.join(SAN, "dat_hang.json")   # quyết định đặ
 import xuat_kho  # noqa: E402
 xuat_kho.STATE = os.path.join(SAN, "xuat_kho.json")
 xuat_kho.SAN_DIR = os.path.join(SAN, "san")
+xuat_kho.HUY_F = os.path.join(SAN, "huy_sau_in.json")
+import hoan_san  # noqa: E402
+hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN
 
@@ -352,6 +357,14 @@ def dong(line):
         return print(f"   (Nhanh: {ma} → {so})")
     if cmd == "doisoat":     # chạy đối soát chiều (17h) như lịch
         return print(re.sub(r"<[^>]+>", "", xuat_kho.bao_chieu()[0]))
+    if cmd == "canhhuy":
+        return print(re.sub(r"<[^>]+>", "", xuat_kho.canh_huy(True)) or "   (không có đơn huỷ sau in mới)")
+    if cmd == "hoan-san":   # hoan-san kich-ban/hoan-tiktok.csv kich-ban/hoan-shopee.csv
+        f = rest.split()
+        d = {"luc": time.strftime("%H:%M")}
+        for k, x in zip(("tiktok", "shopee"), f):
+            d[k] = hoan_san.doc_csv(os.path.join(ROOT, x) if not os.path.isabs(x) else x)
+        return print("   TÓM TẮT:", hoan_san.chay(d, True))
     if cmd == "dubao":
         kho_flow.nhac_dat_hang(True)
         return

@@ -952,7 +952,9 @@ def menu(m, arg):
           "(nhiều tem 1 ảnh / nhiều ảnh 1 lần đều được)\n\n"
           "🖨 <b>In đơn</b>: gõ /indon → số tem cần in từng sàn, đơn chưa có MVĐ, đơn sắp quá hạn\n"
           "🚚 <b>Giao shipper</b>: <b>chụp tem</b> (nhiều kiện 1 ảnh), chú thích <code>/giao</code> → bot so từng kiện, "
-          "đơn huỷ báo giữ lại ngay. /doisoat xem lệch bất cứ lúc nào (bot tự đối soát 17h + 9h hôm sau)\n\n"
+          "đơn huỷ báo giữ lại ngay. /doisoat xem lệch bất cứ lúc nào (bot tự đối soát 17h + 9h hôm sau)\n"
+          "⛔ <b>Đơn huỷ sau khi in</b>: bot báo ngay khi khách huỷ → rút kiện ra, <b>chụp tem</b> chú thích "
+          "<code>/giulai</code>. Gõ /giulai xem kiện huỷ còn thiếu\n\n"
           f"🚚 <b>Chốt đơn đi</b> (17h, đếm tay nếu chưa quét):\n<code>{esc(MAU['chotdi'])}</code>\n\n"
           "🧾 <b>Đối soát hàng hoàn</b> (17h): chụp màn hình danh sách hoàn trên sàn, chú thích <code>/chothoan</code>\n\n"
           "🔢 <b>Kiểm kho</b>: gõ /kiemkho xem danh sách hôm nay → gõ <code>/kiemkho</code> + các số đếm theo thứ tự",

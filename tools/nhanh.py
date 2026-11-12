@@ -304,6 +304,16 @@ def gmv_nv(tu, den):
     return out
 
 
+def sau_sync():
+    """Đồng bộ xong: báo nhóm Kho đơn vừa huỷ sau khi in (rút kiện trước khi shipper tới)."""
+    import subprocess
+    try:
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "xuat_kho.py"),
+                        "canhhuy", "--send"], timeout=120)
+    except Exception as e:
+        print("canh huy loi:", e)
+
+
 if __name__ == "__main__":
     a = sys.argv[1:] or ["help"]
     if a[0] == "gmv":   # nhanh.py gmv YYYY-MM-DD YYYY-MM-DD -> JSON (bot HCNS xếp rank NVBH)
@@ -321,6 +331,7 @@ if __name__ == "__main__":
                 print(NA.sync())
             except Exception as e:
                 bao_loi(f"lỗi API Nhanh: {e}"[:300]); raise
+            sau_sync()
             sys.exit(0)
         if "--gio" in a and not (7 <= datetime.now().hour < 23):
             sys.exit(0)
@@ -330,6 +341,7 @@ if __name__ == "__main__":
             bao_loi(str(e)); sys.exit(2)
         except Exception as e:
             bao_loi(f"lỗi đồng bộ: {e}"[:300]); raise
+        sau_sync()
     elif a[0] == "nhap":
         print(nhap() or "không có file orbit-nhanh-sync-*.json trong Downloads")
     elif a[0] == "xem":

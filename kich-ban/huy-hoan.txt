@@ -1,0 +1,25 @@
+# 1) Đơn HUỶ SAU KHI IN → bot báo ngay → kho rút kiện, chụp tem /giulai
+nhanh-don
+la kho
+kho: /indon
+# khách huỷ 2 đơn đã in tem: SPXVN2003 (kho chưa giao), TT1002 (kho lỡ quét giao shipper)
+kho: /giao TT1002
+nhanh-st SPXVN2003 63
+nhanh-st TT1002 63
+# sau lần đồng bộ Nhanh: bot báo nhóm kho rút kiện
+canhhuy
+# chạy lại không báo trùng
+canhhuy
+kho: /giulai
+kho: /giulai SPXVN2003
+# không áp dụng: đơn không huỷ, mã lạ, quét lại
+kho: /giulai TT1003 XYZ123456 SPXVN2003
+# TT1002 vẫn treo (đã giao shipper) → hiện trong đối soát
+doisoat
+#
+# 2) YÊU CẦU HOÀN TIỀN trên sàn → báo nhóm Đổi trả cho CSKH + nhóm Kho kiện cần kiểm
+# kho đã nhận 1 kiện Shopee (nguyên vẹn) trước khi bot đọc sàn
+kho: /hoan SPXVNHOAN0001
+hoan-san kich-ban/hoan-tiktok.csv kich-ban/hoan-shopee.csv
+# lần đọc sau: CSKH đã xử lý 2 yêu cầu TikTok → bot báo "đã xử lý", không đánh 🆕 lại
+hoan-san kich-ban/hoan-tiktok-2.csv kich-ban/hoan-shopee.csv

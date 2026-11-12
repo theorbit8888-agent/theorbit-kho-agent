@@ -5,6 +5,9 @@ Nguồn: đơn Nhanh.vn (cache logs/nhanh/, đồng bộ 30 phút/lần) + kiệ
   /indon            chốt danh sách cần gửi hôm nay (đơn chờ gửi trên Nhanh) → số tem phải in, đơn chưa có MVĐ, đơn tồn >24h
   /giao + ảnh tem   lúc giao shipper: chụp tem (nhiều tem 1 ảnh / album), hoặc gõ /giao MVĐ MVĐ… → ghi đã giao,
                     đơn đã HUỶ thì báo giữ kiện lại ngay
+  /giulai + ảnh tem  đơn HUỶ SAU KHI IN (đã có MVĐ rồi mới huỷ): kho rút kiện ra, chụp/quét tem xác nhận đã giữ.
+                    Bot báo ngay khi Nhanh thấy đơn huỷ (sau mỗi lần đồng bộ) + 9h/17h nhắc kiện chưa xác nhận;
+                    quá 1 ngày chưa thấy kiện = nghi shipper đã lấy → xem camera / đòi shipper.
   /doisoat [qua]    đối soát ngay: cần gửi ↔ kho quét giao ↔ Nhanh/sàn ghi nhận ĐVVC lấy; tự chạy 17h, 18h, 9h hôm sau
 Kết quả ghi bảng 07 · ĐỐI SOÁT NGÀY (mỗi sàn 1 dòng), danh sách lệch kèm MVĐ.
 """
@@ -107,6 +110,7 @@ def tinh(ngay):
     """Đối soát 1 ngày → {kenh: {...danh sách đơn...}}."""
     s = st()
     d = ngay_st(s, ngay)
+    huy_doc()
     od = don_all(d)
     giao = d["giao"]
     for g in giao.values():   # mã quét lúc Nhanh chưa đồng bộ đơn → tìm lại
@@ -128,8 +132,8 @@ def tinh(ngay):
             k["chi_san"].append(o)
         huy = la_huy(o)
         if huy:
-            if oid in {r.get("id") for r in d["rut"].values()}:
-                pass   # kho đã bấm "Đã rút lại"
+            if oid in {r.get("id") for r in d["rut"].values()} or (HUY.get(oid) or {}).get("giu"):
+                pass   # kho đã bấm "Đã rút lại" / /giulai
             elif quet:
                 k["huy_da_giao"].append(o)
             elif trong_ds and not quet:
@@ -165,6 +169,7 @@ def bao_cao(ngay=None, ghi=True):
         return "", 0
     if ngay == KF.today():
         luu(chup())
+    huy_cap_nhat()
     out, la, d = tinh(ngay)
     cu = NH.meta().get("dong_bo", "")
     L = [f"🚚 <b>ĐỐI SOÁT IN ĐƠN → BÀN GIAO</b> {ngay[8:10]}/{ngay[5:7]} (Nhanh cập nhật {esc(cu[11:] or cu)})"]
@@ -180,11 +185,8 @@ def bao_cao(ngay=None, ghi=True):
         L.append(f"\n{'✅' if not bad else '⚠️'} <b>{san}</b>: cần gửi <b>{len(x['can'])}</b>"
                  + (f" · kho quét giao <b>{len(x['quet'])}</b>" if co_quet else "")
                  + f" · sàn ghi nhận ĐVVC lấy <b>{len(x['lay'])}</b>")
-        if x["huy_da_giao"]:
-            L.append(f"   🚨 <b>{len(x['huy_da_giao'])} đơn ĐÃ HUỶ mà kho đã giao</b> → gọi shipper lấy lại: {ds_ma(x['huy_da_giao'])}")
-        if x["huy_sau_in"]:
-            L.append(f"   ⛔ {len(x['huy_sau_in'])} đơn huỷ sau khi in → rút kiện/tem khỏi khay, trả hàng lên kệ: "
-                     f"{ds_ma(x['huy_sau_in'])}")
+        if x["huy_da_giao"] or x["huy_sau_in"]:
+            L.append(f"   ⛔ {len(x['huy_sau_in']) + len(x['huy_da_giao'])} đơn huỷ sau khi in (chi tiết ở mục ĐƠN HUỶ SAU IN)")
         if x["quet_chua_lay"]:
             L.append(f"   📣 {len(x['quet_chua_lay'])} kiện kho đã giao mà sàn chưa ghi nhận lấy → shipper chưa quét, "
                      f"đối chiếu biên bản: {ds_ma(x['quet_chua_lay'])}")
@@ -199,6 +201,9 @@ def bao_cao(ngay=None, ghi=True):
             L.append(f"   ℹ️ {len(x['lay_khong_quet'])} kiện sàn ghi đã lấy mà kho không quét (quét sót?)")
         if ghi:
             ghi_07(ngay, san, x, co_quet)
+    ht, _ = huy_bao()
+    if ht:
+        L.append("\n" + ht)
     if la:
         L.append(f"\n❓ {len(la)} mã kho quét không thấy trên Nhanh: "
                  + ", ".join(f"<code>{esc(g['ma'])}</code>" for g in la[:10]))
@@ -360,6 +365,7 @@ def on_cb(cq, p):
             if g:
                 dd.setdefault("rut", {})[x.lower()] = dict(g, rut=ten(u))
         luu(s)
+        huy_giu(x, ten(u))
         c = cq["message"]
         btn = [r for r in (c.get("reply_markup") or {}).get("inline_keyboard", []) if r[0].get("callback_data") != ":".join(p)]
         return tedit(c["chat"]["id"], c["message_id"], esc(c.get("text", "")) + f"\n↩️ {esc(ten(u))} đã rút lại {esc(x)}",
@@ -381,6 +387,7 @@ def bao_sang():
         return ""
     luu(chup())
     qua = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    huy_cap_nhat()
     out, la, d = tinh(qua)
     L = []
     for k, x in out.items():
@@ -392,6 +399,9 @@ def bao_sang():
                      + (f"\n   🚨 {len(x['huy_da_giao'])} đơn huỷ đã giao: {ds_ma(x['huy_da_giao'])}" if x["huy_da_giao"] else "")
                      + (f"\n   📦 {len(x['chua_di'])} đơn hôm qua chưa đi → ưu tiên giao sáng nay: {ds_ma(x['chua_di'])}"
                         if x["chua_di"] else ""))
+    ht, _ = huy_bao()
+    if ht:
+        L.append(ht)
     ghi_qua = bool(L)
     if ghi_qua:
         bao_cao(qua)  # cập nhật dòng 07 hôm qua với trạng thái mới nhất
@@ -503,8 +513,157 @@ def sosan_cli(a):
         so_san_file(a[1], "--send" in a)
 
 
-TK.EXT_CMDS.update({"/indon": indon, "/giao": giao, "/doisoat": doisoat})
-TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/indon", "/giao", "/doisoat")})
+# ======================= ĐƠN HUỶ SAU KHI IN (đã bấm Chuẩn bị hàng / có MVĐ rồi mới huỷ) =======================
+
+HUY_F = os.path.join(KF.ROOT, "logs", "huy_sau_in.json")
+HUY_TU = "2026-11-12"     # ngày bắt đầu theo dõi — không lôi đơn huỷ cũ ra
+HUY = {}                  # oid -> {ma, ma_san, kenh, huy (ngày), st_ten, quet, giu{who,luc}, bao}
+
+
+def huy_doc():
+    HUY.clear()
+    try:
+        HUY.update(json.load(open(HUY_F)))
+    except Exception:
+        pass
+    return HUY
+
+
+def huy_luu():
+    han = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+    for k in [k for k, x in HUY.items() if x.get("huy", "") < han]:
+        HUY.pop(k)
+    os.makedirs(os.path.dirname(HUY_F), exist_ok=True)
+    json.dump(HUY, open(HUY_F, "w"), ensure_ascii=False, indent=1)
+
+
+def huy_cap_nhat():
+    """Quét Nhanh: đơn đã HUỶ mà có MVĐ (= đã sắp xếp vận chuyển / in tem) → vào sổ. Ghi kèm kho đã quét giao chưa."""
+    huy_doc()
+    if not NH.meta():
+        return HUY
+    s = st()
+    giao_ids = {g.get("id") for d in s.values() for g in d.get("giao", {}).values() if g.get("id")}
+    rut = {r.get("id"): r for d in s.values() for r in d.get("rut", {}).values() if r.get("id")}
+    moc = max(HUY_TU, (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"))
+    for o in NH.orders().values():
+        if not (la_huy(o) and o.get("mvd")):
+            continue
+        ngay = _d(o.get("cap_nhat")) or _d(o.get("tao"))
+        if o["id"] not in HUY and ngay < moc:
+            continue
+        x = HUY.setdefault(o["id"], {"ma": o["mvd"], "ma_san": o.get("ma_san", ""), "kenh": o["kenh"], "huy": ngay,
+                                     "thay": datetime.now().strftime("%Y-%m-%d %H:%M")})
+        x["st_ten"] = o.get("st_ten", "")
+        x["quet"] = o["id"] in giao_ids
+        if o["id"] in rut and not x.get("giu"):
+            x["giu"] = {"who": rut[o["id"]].get("rut", ""), "luc": datetime.now().strftime("%d/%m %H:%M")}
+    huy_luu()
+    return HUY
+
+
+def huy_giu(ma_, who):
+    """Kho xác nhận đã giữ kiện/tem của đơn huỷ. Trả 'ok' | 'da' | 'khong_huy' | 'la'."""
+    huy_doc()
+    k = ma_.lower()
+    oid = next((i for i, x in HUY.items() if k in (str(x["ma"]).lower(), str(x.get("ma_san", "")).lower())), None)
+    if not oid:
+        o = NH.don_theo_ma(ma_) if NH.meta() else None
+        if not o:
+            return "la"
+        if not la_huy(o):
+            return "khong_huy"
+        oid = o["id"]
+        HUY[oid] = {"ma": o.get("mvd") or ma_, "ma_san": o.get("ma_san", ""), "kenh": o["kenh"],
+                    "huy": _d(o.get("cap_nhat")) or KF.today(), "st_ten": o.get("st_ten", ""), "bao": True}
+    if HUY[oid].get("giu"):
+        return "da"
+    HUY[oid]["giu"] = {"who": who, "luc": datetime.now().strftime("%d/%m %H:%M")}
+    huy_luu()
+    return "ok"
+
+
+def huy_bao():
+    """Text các đơn huỷ sau in mà kho CHƯA xác nhận giữ kiện. Trả (text, số đơn)."""
+    cho = [x for x in HUY.values() if not x.get("giu")]
+    if not cho:
+        return "", 0
+    hn = KF.today()
+    da_giao = [x for x in cho if x.get("quet")]
+    lau = [x for x in cho if not x.get("quet") and x.get("huy", hn) < hn]
+    moi = [x for x in cho if not x.get("quet") and x.get("huy", hn) >= hn]
+    f = lambda xs: ", ".join(f"<code>{esc(x['ma'])}</code> ({SAN_KENH.get(x['kenh'], x['kenh'])})" for x in xs[:15]) \
+        + (f" … (+{len(xs) - 15})" if len(xs) > 15 else "")
+    L = [f"⛔ <b>ĐƠN HUỶ SAU KHI IN — {len(cho)} kiện kho chưa xác nhận giữ lại</b>"]
+    if da_giao:
+        L.append(f"🚨 <b>{len(da_giao)} đơn đã huỷ mà kho ĐÃ QUÉT GIAO shipper</b> → gọi shipper trả lại kiện, "
+                 f"không trả thì khiếu nại ĐVVC: {f(da_giao)}")
+    if lau:
+        L.append(f"🚨 <b>{len(lau)} đơn huỷ từ hôm trước vẫn chưa thấy kiện</b> → tìm ở khay/kệ; không thấy = nghi shipper "
+                 f"đã lấy (xem camera bàn giao, đối chiếu biên bản, đòi shipper): {f(lau)}")
+    if moi:
+        L.append(f"📦 {len(moi)} đơn huỷ hôm nay → rút kiện/tem khỏi khay giao, KHÔNG đưa shipper: {f(moi)}")
+    L.append("Rút được kiện nào: chụp tem chú thích <code>/giulai</code> (hoặc gõ <code>/giulai MVĐ …</code>) → bot gạch. "
+             "Sau đó bóc kiện, trả hàng lên kệ.")
+    return "\n".join(L), len(cho)
+
+
+def canh_huy(send=False):
+    """Sau mỗi lần đồng bộ Nhanh: đơn vừa huỷ sau khi in → báo nhóm Kho NGAY để rút kiện trước khi shipper tới."""
+    if not NH.meta():
+        return ""
+    huy_cap_nhat()
+    moi = [x for x in HUY.values() if not x.get("bao") and not x.get("giu")]
+    if not moi or not (7 <= datetime.now().hour < 22):
+        return ""
+    t = ("⛔ <b>VỪA HUỶ SAU KHI IN — RÚT KIỆN RA, ĐỪNG GIAO SHIPPER</b>\n"
+         + "\n".join(f"• <code>{esc(x['ma'])}</code> {SAN_KENH.get(x['kenh'], x['kenh'])} · {esc(x.get('st_ten', ''))}"
+                     + (" · 🚨 kho đã quét giao → gọi shipper trả lại" if x.get("quet") else "") for x in moi[:30])
+         + "\nRút xong chụp tem chú thích <code>/giulai</code>.")
+    if send:
+        if not KF.kchat() or not tsend(KF.kchat(), t):
+            return t
+    for x in moi:
+        x["bao"] = True
+    huy_luu()
+    return t
+
+
+def giulai(m, arg):
+    chat, who = m["chat"]["id"], ten(m.get("from"))
+    mas = list(dict.fromkeys(TK.ma_list(arg)))
+    if not mas:
+        huy_cap_nhat()
+        t, n = huy_bao()
+        return tsend(chat, (t or "✅ Không còn đơn huỷ sau in nào chờ giữ kiện.")
+                     + "\n\n📷 Rút được kiện đơn huỷ: chụp tem chú thích <code>/giulai</code>.",
+                     reply_to=m["message_id"])
+    kq = {"ok": [], "da": [], "khong_huy": [], "la": []}
+    huy_cap_nhat()
+    for x in mas:
+        kq[huy_giu(x, who)].append(x)
+    for x in kq["ok"] + kq["da"]:   # bỏ khỏi "đã giao" nếu lỡ quét
+        s = st()
+        for dd in s.values():
+            g = dd.get("giao", {}).pop(x.lower(), None)
+            if g:
+                dd.setdefault("rut", {})[x.lower()] = dict(g, rut=who)
+        luu(s)
+    c = lambda xs: ", ".join(f"<code>{esc(x)}</code>" for x in xs)
+    L = [f"↩️ {esc(who)} giữ lại <b>{len(kq['ok'])}</b> kiện đơn huỷ" + (f": {c(kq['ok'])}" if kq["ok"] else "")]
+    if kq["da"]:
+        L.append("♻️ Đã xác nhận trước rồi: " + c(kq["da"]))
+    if kq["khong_huy"]:
+        L.append("⚠️ <b>Đơn KHÔNG huỷ</b> → vẫn giao bình thường, đừng giữ: " + c(kq["khong_huy"]))
+    if kq["la"]:
+        L.append("❓ Không thấy trên Nhanh (gõ sai / Nhanh chưa đồng bộ?): " + c(kq["la"]))
+    _, n = huy_bao()
+    L.append(f"Còn <b>{n}</b> đơn huỷ sau in chưa thấy kiện — gõ /giulai xem." if n else "✅ Hết đơn huỷ sau in chờ giữ kiện.")
+    tsend(chat, "\n".join(L), reply_to=m["message_id"])
+
+
+TK.EXT_CMDS.update({"/indon": indon, "/giao": giao, "/doisoat": doisoat, "/giulai": giulai})
+TK.EXT_NHOM.update({k: ("CHAT_ID",) for k in ("/indon", "/giao", "/doisoat", "/giulai")})
 TK.EXT_CB["xk"] = on_cb
 
 if __name__ == "__main__":
@@ -514,6 +673,8 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "sosan":
         sosan_cli(a)
+    elif a and a[0] == "canhhuy":   # sau mỗi lần đồng bộ Nhanh (nhanh.py sync gọi): báo đơn vừa huỷ sau in
+        print(re.sub(r"<[^>]+>", "", canh_huy("--send" in a)) or "không có đơn huỷ sau in mới")
     elif a and a[0] == "doisoat":   # python3 tools/xuat_kho.py doisoat [YYYY-MM-DD]
         print(re.sub(r"<[^>]+>", "", bao_cao(a[1] if len(a) > 1 else None, ghi=False)[0]))
     else:
