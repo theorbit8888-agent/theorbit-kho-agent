@@ -9,6 +9,9 @@
 //   → window.__out CSV "ma|loai|ly_do|tt|han|kv|tien|nut|mvd" (nut: phan_hoi = cần duyệt/từ chối, khang_nghi = đã tự hoàn,
 //     còn kháng nghị được, xac_nhan = Shopee chờ xác nhận hàng trả về, dang_tra = người mua đang gửi trả (kiện chưa về),
 //     kiem_hang = Shopee đã hoàn tiền, kho kiểm hàng hoàn (sai/thiếu → khiếu nại), bang_chung = cần bằng chứng). KHÔNG lấy tên/username khách.
+// KÉO ĐƠN VỀ NHANH (chủ shop cho phép 12/11/2026 — nút DUY NHẤT bot được bấm trên Nhanh, chỉ kéo đơn/trạng thái từ sàn về):
+//   https://nhanh.vn/ecommerce/shopee/order  hoặc  https://nhanh.vn/ecommerce/tiktok/order
+//   → await __layDonNhanh(["mã đơn sàn", ...])  (Tải đơn › Đơn hàng cụ thể › Tải dữ liệu) → window.__out "ma|ket_qua"
 // Kết quả dài: lấy từng khúc  window.__out.slice(i*900, (i+1)*900)  tới khi rỗng, ghép lại.
 window.__ngu = ms => new Promise(r => setTimeout(r, ms));
 
@@ -141,5 +144,30 @@ window.__docHoanShopee = async () => {
   const v = Object.values(all);
   window.__out = __csv(v);
   return {n: v.length, tong: +((document.body.innerText.match(/Đơn Trả hàng Hoàn tiền\s*\((\d+)\)/) || [])[1] || 0), chips: chips.length};
+};
+window.__layDonNhanh = async (mas) => {
+  const bam = (re, tag = '*') => { const e = [...document.querySelectorAll(tag)].filter(x => x.childElementCount < 3 && re.test(x.textContent.trim()) && x.offsetParent).pop(); if (e) e.click(); return !!e; };   // phần tử sâu nhất
+  await __ngu(3000);
+  if (!bam(/^Tải đơn$/, 'button, a, span, div')) return {loi: 'không thấy nút Tải đơn'};
+  await __ngu(1500);
+  if (!bam(/^Đơn hàng cụ thể$/)) return {loi: 'không thấy tab Đơn hàng cụ thể'};
+  await __ngu(1000);
+  const ta = [...document.querySelectorAll('textarea')].find(x => x.offsetParent);
+  if (!ta) return {loi: 'không thấy ô nhập mã'};
+  const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+  set.call(ta, mas.join('\n')); ta.dispatchEvent(new Event('input', {bubbles: true})); ta.dispatchEvent(new Event('change', {bubbles: true}));
+  await __ngu(500);
+  const nut = [...document.querySelectorAll('button')].filter(b => /Tải dữ liệu/.test(b.textContent) && b.offsetParent).pop();
+  if (!nut) return {loi: 'không thấy nút Tải dữ liệu'};
+  nut.click();
+  let t = '';
+  for (let i = 0; i < 60; i++) {   // tối đa ~2 phút
+    await __ngu(2000);
+    t = document.body.innerText;
+    if (/Cập nhật thành công|Thất bại\s*[1-9]/.test(t) && mas.every(m => t.includes(m))) break;
+  }
+  const kq = mas.map(m => { const r = t.match(new RegExp(m + '\\s*\\n?\\s*([^\\n]+)')); return m + '|' + (r ? r[1].trim() : '?'); });
+  window.__out = kq.join('\n');
+  return {n: mas.length, ok: (t.match(/Thành công\s*(\d+)/) || [])[1], loi_sl: (t.match(/Thất bại\s*(\d+)/) || [])[1]};
 };
 'san sang'

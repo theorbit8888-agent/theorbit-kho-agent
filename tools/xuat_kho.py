@@ -464,6 +464,55 @@ def dong_bo_lai():
     return True
 
 
+LAY_F = os.path.join(KF.ROOT, "logs", "san", "lay_nhanh.json")
+
+
+def doc_csv_san(opt):
+    d = {"luc": datetime.now().strftime("%H:%M")}
+    for k in ("tiktok", "shopee"):
+        f = opt.get("--" + k)
+        if f and os.path.exists(f):
+            d[k] = [dict(zip(("ma", "mvd", "tt", "giao"), (l.split("|") + ["", "", ""])[:4]))
+                    for l in open(f, encoding="utf-8").read().splitlines() if l.strip()]
+            for x in d[k]:
+                x["hoa_toc"] = "tốc" in x["giao"].lower()
+            if opt.get("--tong-" + k):
+                d["tong_" + k] = int(opt["--tong-" + k])
+    return d
+
+
+def kenh_theo_ma(m):
+    m = str(m).strip().upper()
+    return "tiktok" if re.fullmatch(r"5[78]\d{16}", m) else "shopee" if re.fullmatch(r"\d{6}[0-9A-Z]{8}", m) else ""
+
+
+def can_lay(d):
+    """Mã đơn sàn cần bấm "Tải đơn" trên Nhanh (đơn Nhanh thiếu / ghi huỷ sai / còn chờ mà sàn đã xong + sổ Nhanh thiếu)."""
+    out = {"tiktok": [], "shopee": []}
+    if NH.meta():
+        for k, x in lech_san(d).items():
+            if x:
+                out[k] += [o["ma"] for o in x["thieu"] + x["huy_nh"]] + [o["ma_san"] for o in x["du"] if o.get("ma_san")]
+    for v in thieu_cap_nhat():
+        k = v.get("kenh") or kenh_theo_ma(v["ma"])
+        if k in out and kenh_theo_ma(v["ma"]):
+            out[k].append(v["ma"])
+    return {k: list(dict.fromkeys(m for m in v if m))[:150] for k, v in out.items()}
+
+
+def canlay_cli(a):
+    """7h30, TRƯỚC khi so: python3 tools/xuat_kho.py canlay --tiktok tt.csv --shopee sp.csv → đọc lại Nhanh (API) rồi in JSON
+    {"tiktok": [mã], "shopee": [mã]} = đơn tác vụ lịch phải bấm Tải đơn trên Nhanh (doc_san.js __layDonNhanh)."""
+    opt = {a[i]: a[i + 1] for i in range(1, len(a) - 1) if a[i].startswith("--") and not a[i + 1].startswith("--")}
+    d = doc_csv_san(opt)
+    if NH.meta() and co_lech(d):
+        dong_bo_lai()
+    out = can_lay(d)
+    os.makedirs(os.path.dirname(LAY_F), exist_ok=True)
+    json.dump(dict(out, ngay=KF.today(), luc=datetime.now().strftime("%H:%M")), open(LAY_F, "w"), ensure_ascii=False)
+    print(json.dumps(out, ensure_ascii=False))
+
+
 def so_san(d, lan_dong_bo=0):
     """d = {"luc": "07:31", "tiktok": [{"ma", "tt", "giao"}], "shopee": [{"ma", "mvd", "tt", "hoa_toc"}]} — danh sách đơn
     CẦN GỬI đọc từ Seller Center (tác vụ lịch 7h30, Chrome chủ shop). Kho IN ĐƠN Ở SÀN (từ 12/11/2026); bot so với Nhanh
@@ -477,6 +526,13 @@ def so_san(d, lan_dong_bo=0):
          + (f" · Nhanh cập nhật {esc(cu[11:] or cu)}" if co_nh else "")]
     ket, lech_ton = {}, []
     lech = lech_san(d) if co_nh else {}
+    try:
+        lay = json.load(open(LAY_F))
+        lay = sum(len(lay.get(k) or []) for k in ("tiktok", "shopee")) if lay.get("ngay") == KF.today() else 0
+    except Exception:
+        lay = 0
+    if lay:
+        L.append(f"🔄 Bot đã bấm <b>Tải đơn</b> trên Nhanh cho {lay} đơn lệch rồi đọc lại Nhanh — dưới đây là phần Nhanh VẪN chưa khớp.")
     for k in ("tiktok", "shopee"):
         ds = d.get(k)
         if ds is None:
@@ -493,7 +549,7 @@ def so_san(d, lan_dong_bo=0):
         dl = f" (đã đồng bộ lại Nhanh {lan_dong_bo} lần)" if lan_dong_bo else ""
         if thieu:
             thieu_ghi([dict(o, kenh=k) for o in thieu], "sàn cần gửi 7h30")
-            lech_ton.append(f"   🔗 {SAN_KENH[k]}: <b>{len(thieu)} đơn Nhanh chưa có</b>{dl} → tồn Nhanh CHƯA TRỪ, dễ bán vượt: "
+            lech_ton.append(f"   🔗 {SAN_KENH[k]}: <b>{len(thieu)} đơn Nhanh chưa có</b>{dl}{' (bấm Tải đơn rồi vẫn không về)' if lay else ''} → tồn Nhanh CHƯA TRỪ, dễ bán vượt: "
                             + ", ".join(f"<code>{esc(o['ma'])}</code>" for o in thieu[:30]) + (" …" if len(thieu) > 30 else ""))
         if x["huy_nh"]:
             lech_ton.append(f"   ⚠️ {SAN_KENH[k]}: <b>{len(x['huy_nh'])} đơn sàn vẫn cần gửi mà Nhanh ghi huỷ</b>{dl} → Nhanh đã nhả hàng,"
@@ -596,16 +652,7 @@ def sosan_cli(a):
     #  hoặc: sosan file.json [--send]
     if a[1].startswith("--"):
         opt = {a[i]: a[i + 1] for i in range(1, len(a) - 1) if a[i].startswith("--") and not a[i + 1].startswith("--")}
-        d = {"luc": datetime.now().strftime("%H:%M")}
-        for k in ("tiktok", "shopee"):
-            f = opt.get("--" + k)
-            if f and os.path.exists(f):
-                d[k] = [dict(zip(("ma", "mvd", "tt", "giao"), (l.split("|") + ["", "", ""])[:4]))
-                        for l in open(f, encoding="utf-8").read().splitlines() if l.strip()]
-                for x in d[k]:
-                    x["hoa_toc"] = "tốc" in x["giao"].lower()
-                if opt.get("--tong-" + k):
-                    d["tong_" + k] = int(opt["--tong-" + k])
+        d = doc_csv_san(opt)
         os.makedirs(SAN_DIR, exist_ok=True)
         f = os.path.join(SAN_DIR, KF.today() + ".json")
         json.dump(d, open(f, "w"), ensure_ascii=False)
@@ -806,6 +853,8 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "sosan":
         sosan_cli(a)
+    elif a and a[0] == "canlay":
+        canlay_cli(a)
     elif a and a[0] == "canhhuy":   # sau mỗi lần đồng bộ Nhanh (nhanh.py sync gọi): báo đơn vừa huỷ sau in
         print(re.sub(r"<[^>]+>", "", canh_huy("--send" in a)) or "không có đơn huỷ sau in mới")
     elif a and a[0] == "doisoat":   # python3 tools/xuat_kho.py doisoat [YYYY-MM-DD]
