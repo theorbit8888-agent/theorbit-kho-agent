@@ -583,6 +583,11 @@ def huy_giu(ma_, who):
     return "ok"
 
 
+def don_san(x):
+    """' · đơn <mã đơn sàn>' (bài dạy D003: báo đơn huỷ sau in kèm mã đơn hàng + mã vận đơn)."""
+    return f" · đơn <code>{esc(x['ma_san'])}</code>" if x.get("ma_san") else ""
+
+
 def huy_bao():
     """Text các đơn huỷ sau in mà kho CHƯA xác nhận giữ kiện. Trả (text, số đơn)."""
     cho = [x for x in HUY.values() if not x.get("giu")]
@@ -592,7 +597,7 @@ def huy_bao():
     da_giao = [x for x in cho if x.get("quet")]
     lau = [x for x in cho if not x.get("quet") and x.get("huy", hn) < hn]
     moi = [x for x in cho if not x.get("quet") and x.get("huy", hn) >= hn]
-    f = lambda xs: ", ".join(f"<code>{esc(x['ma'])}</code> ({SAN_KENH.get(x['kenh'], x['kenh'])})" for x in xs[:15]) \
+    f = lambda xs: ", ".join(f"<code>{esc(x['ma'])}</code> ({SAN_KENH.get(x['kenh'], x['kenh'])}{don_san(x)})" for x in xs[:15]) \
         + (f" … (+{len(xs) - 15})" if len(xs) > 15 else "")
     L = [f"⛔ <b>ĐƠN HUỶ SAU KHI IN — {len(cho)} kiện kho chưa xác nhận giữ lại</b>"]
     if da_giao:
@@ -614,7 +619,8 @@ def huy_tong_ket(ngay=None):
     xs = [x for x in HUY.values() if x.get("huy") == ngay or not x.get("giu")]
     if not xs:
         return "", 0
-    f = lambda ys: ", ".join(f"<code>{esc(x['ma'])}</code>" for x in ys[:25]) + (f" … (+{len(ys) - 25})" if len(ys) > 25 else "")
+    f = lambda ys: ", ".join(f"<code>{esc(x['ma'])}</code>{(' (' + don_san(x)[3:] + ')') if x.get('ma_san') else ''}" for x in ys[:25]) \
+        + (f" … (+{len(ys) - 25})" if len(ys) > 25 else "")
     giu = [x for x in xs if x.get("giu")]
     da_giao = [x for x in xs if not x.get("giu") and x.get("quet")]
     chua = [x for x in xs if not x.get("giu") and not x.get("quet")]
@@ -643,7 +649,7 @@ def canh_huy(send=False):
     if not moi or not (7 <= datetime.now().hour < 22):
         return ""
     t = ("⛔ <b>VỪA HUỶ SAU KHI IN — RÚT KIỆN RA, ĐỪNG GIAO SHIPPER</b>\n"
-         + "\n".join(f"• <code>{esc(x['ma'])}</code> {SAN_KENH.get(x['kenh'], x['kenh'])} · {esc(x.get('st_ten', ''))}"
+         + "\n".join(f"• <code>{esc(x['ma'])}</code> {SAN_KENH.get(x['kenh'], x['kenh'])}{don_san(x)} · {esc(x.get('st_ten', ''))}"
                      + (" · 🚨 kho đã quét giao → gọi shipper trả lại" if x.get("quet") else "") for x in moi[:30])
          + "\nRút xong chụp tem chú thích <code>/giulai</code>.")
     if send:
