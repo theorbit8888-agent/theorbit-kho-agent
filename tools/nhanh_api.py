@@ -106,7 +106,10 @@ def products():
         if not x.get("code"):
             continue
         inv = x.get("inventory") or {}
-        prods[x["code"]] = {"ten": x.get("name"), "ton": _so(inv.get("remain")), "trong_kho": _so(inv.get("remain")),
+        ton, giao = _so(inv.get("remain")), _so(inv.get("shipping")) or 0
+        # "remain" của API = tồn gồm cả hàng đang giao; hàng THỰC Ở KHO (để kiểm kho) = remain - shipping
+        # (khớp cột remainInDepot trên web Nhanh, đã đối chiếu 12 SKU ngày 12/11/2026)
+        prods[x["code"]] = {"ten": x.get("name"), "ton": ton, "trong_kho": None if ton is None else ton - giao,
                             "co_the_ban": _so(inv.get("available")), "dang_giao": _so(inv.get("shipping")),
                             "giu": _so(inv.get("holding")), "loi": _so(inv.get("damaged"))}
     return prods
