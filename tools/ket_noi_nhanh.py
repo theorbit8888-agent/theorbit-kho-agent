@@ -147,3 +147,4 @@ def huy(uid):
 
 TK.EXT_PRIV["/ketnoinhanh"] = cmd
 TK.EXT_TEXT.insert(0, tra_loi)
+TK.EXT_BAN.append(lambda uid: uid in KN)   # đang dở /ketnoinhanh: tin của chủ shop do bot xử lý, không chuyển agent

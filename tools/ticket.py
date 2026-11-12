@@ -1246,13 +1246,14 @@ def on_update(u):
     if par and f"{chat}:{par['message_id']}" in PEND:
         JOBS.put(u); return True
     mg = m.get("media_group_id")
-    if mg and lenh in ("/hoan", "/chothoan", "/giao"):
+    if mg and lenh in ("/hoan", "/chothoan", "/giao", "/giulai"):
         ALBUM[mg] = (lenh, time.time())
     elif mg and not lenh and mg in ALBUM and time.time() - ALBUM[mg][1] < 120:
         JOBS.put(u); return True
     if typ == "private":
         if (uid in WIZ or lenh in LENH or lenh in EXT_PRIV or str(uid) != str(E.get("OWNER_TELE_ID", ""))
-                or any(f(uid) for f in EXT_BAN)):
+                or any(f(uid) for f in EXT_BAN)
+                or re.fullmatch(r"[A-Za-z0-9_\-]{40,}", text)):   # chuỗi giống mã bí mật: bot tự xử lý, không chuyển agent
             JOBS.put(u); return True
         return False
     if chat == tchat() and lenh in LENH:
@@ -1325,7 +1326,7 @@ def handle(u):
     mg = m.get("media_group_id")
     if not lenh and mg and mg in ALBUM:
         lenh = ALBUM[mg][0]
-    if lenh in ("/hoan", "/chothoan", "/giao") and m.get("photo") and not ma_list(arg):
+    if lenh in ("/hoan", "/chothoan", "/giao", "/giulai") and m.get("photo") and not ma_list(arg):
         ma_anh = doc_ma_anh(m, chu=lenh == "/chothoan")
         if not ma_anh:
             return tsend(chat, "📷 Chưa đọc được mã vạch trong ảnh. Chụp gần + rõ tem (mã vạch nằm ngang, đủ sáng), "
