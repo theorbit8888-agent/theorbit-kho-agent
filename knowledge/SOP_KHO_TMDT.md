@@ -1,6 +1,7 @@
 # SOP Kho TMĐT — The Orbit (TikTok Shop, Shopee, Web/Meta · Nhanh.vn)
 
 Mục tiêu: **không giao trễ, không giao sai, không mất hàng hoàn, tồn trên sàn = tồn thật.** Đây là bộ việc chuẩn của kho TMĐT; chỗ ghi "⚠ cần xác minh" là số/hạn phụ thuộc chính sách sàn hiện hành — người kho kiểm lại trên Seller Center rồi ghi vào mục "Quy định shop đã chốt" ở cuối.
+- (12/11/2026, chủ shop) In đơn ở Nhanh. 7h30 bot đồng bộ lại Nhanh rồi so với đơn cần gửi trên TikTok/Shopee: đơn Nhanh vẫn chưa bắt → bot báo nhóm Kho để in đơn đó ở sàn; đơn Nhanh còn chờ mà sàn đã huỷ/giao → không in; Nhanh thiếu/thừa đơn = tồn Nhanh lệch → kéo đơn về Nhanh (Đơn sàn › Lấy đơn).
 - (12/11/2026) Đơn huỷ sau khi đã in tem/bấm Chuẩn bị hàng: kho rút kiện ra khỏi khay giao, chụp tem chú thích /giulai; bot nhắc 9h/17h tới khi đủ. Đơn huỷ mà đã giao shipper → đòi shipper trả kiện. Quá 1 ngày không thấy kiện → xem camera bàn giao, báo trưởng kho. 17h bot gửi TỔNG KẾT đơn huỷ sau in/gói trong ngày: kho đếm khay đơn huỷ phải đủ số kiện đã giữ.
 - (12/11/2026) Yêu cầu hoàn tiền/trả hàng trên sàn: bot báo nhóm Đổi trả CS-Kho 8h30 + 15h30, tag CSKH đang trong ca (theo lịch ca HCNS); CSKH duyệt/từ chối trên sàn dựa vào tình trạng kiện kho ghi ở bảng 09 (kho kiện về là quét /hoan ngay, lỗi/thiếu chụp ảnh).
 
