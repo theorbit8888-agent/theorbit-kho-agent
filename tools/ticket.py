@@ -344,19 +344,41 @@ def nhanh_link(sku):
 
 
 def sp_don(ma):
-    """Đơn Nhanh theo MVĐ/mã đơn + chuỗi sản phẩm có tên: 'Tên (SKU) x1; …'. Không thấy → (None, "")."""
+    """Đơn Nhanh theo MVĐ/mã đơn + chuỗi sản phẩm có tên: 'Tên (SKU) x1; …'. Không thấy → (None, "").
+    Thứ tự: đơn đi (MVĐ/mã sàn/ID) → bỏ đuôi '-001' của GHN → MVĐ hoàn SAU GIAO trên Shopee/TikTok (API trả hàng)."""
     try:
         import nhanh as NH
         o = NH.don_theo_ma(ma)
+        m2 = re.sub(r"-\d{1,3}$", "", str(ma))
+        if not o and m2 != str(ma):
+            o = NH.don_theo_ma(m2)
+        if not o:
+            import nhanh_api as NA
+            r = _TRA_HOAN.get(str(ma).upper())
+            if r is None:
+                r = _TRA_HOAN[str(ma).upper()] = NA.tra_hoan(ma) or {}
+            if r:
+                o = {"id": r["nhanh_id"], "kenh": r["kenh"], "ma_san": r["ma_san"], "mvd": str(ma), "sp": r["sp"],
+                     "st_ten": f"KHÁCH TRẢ SAU GIAO · {r['loai']} · {r['tt_san']}" + (f" · lý do: {r['ly_do']}" if r["ly_do"] else ""),
+                     "tra_sau_giao": r}
         ps = NH.products() if o else {}
-    except Exception:
+    except Exception as e:
+        print("ticket: tra đơn Nhanh lỗi", repr(e)[:150], flush=True)
         return None, ""
     if not o:
         return None, ""
     def ten_sp(c):
         t = (ps.get(c) or ps.get(str(c).upper()) or {}).get("ten")
         return f"{t} ({c})" if t else str(c)
-    return o, "; ".join(f"{ten_sp(x['ma'])} x{x['sl']}" for x in o["sp"])
+    if not o["sp"] and o.get("tra_sau_giao"):
+        return o, "; ".join(o["tra_sau_giao"]["sp_san"])
+    sp = "; ".join(f"{ten_sp(x['ma'])} x{x['sl']}" for x in o["sp"])
+    if o.get("tra_sau_giao"):   # kiện khách trả: ghi cả hàng đã gửi (Nhanh) lẫn phiếu trả trên sàn — lệch size/mẫu thì thấy ngay
+        sp += " ‖ Sàn ghi khách trả: " + "; ".join(o["tra_sau_giao"]["sp_san"])
+    return o, sp
+
+
+_TRA_HOAN = {}   # MVĐ -> kết quả tra trả hàng sàn (tránh gọi API lặp)
 
 
 def don_nhanh(ma):
@@ -366,7 +388,9 @@ def don_nhanh(ma):
         return ""
     import nhanh as NH
     return (f"📦 Nhanh: đơn {NH.TEN_KENH.get(o['kenh'], o['kenh'])} {o['ma_san'] or o['id']} ({o['st_ten']})\n"
-            f"Trong kiện phải có: <b>{esc(sp)}</b>")
+            + (f"Hàng đã gửi khách (Nhanh): <b>{esc(sp.split(' ‖ ')[0])}</b>\n🧾 {esc(sp.split(' ‖ ')[1])}\n"
+               "→ Khách có thể chỉ trả 1 phần: đếm đúng món trong kiện, thiếu/khác thì bấm Thiếu/Tráo."
+               if " ‖ " in sp else f"Trong kiện phải có: <b>{esc(sp)}</b>"))
 
 
 # ======================= thẻ ticket =======================

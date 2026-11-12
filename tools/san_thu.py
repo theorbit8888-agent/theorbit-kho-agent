@@ -207,6 +207,8 @@ _real_sp.Popen = _ChanNhanh
 NH.bao_loi = lambda *a, **k: print("   (sân thử: Nhanh lỗi — bỏ qua báo chủ shop)")
 if "--co-nhanh" not in sys.argv:   # mặc định không dùng dữ liệu Nhanh trên máy (máy team không có)
     NH.CACHE = os.path.join(SAN, "nhanh")
+    import nhanh_api as _NA
+    _NA.co_api = lambda: False   # sân thử không gọi API Nhanh thật
 TK.STATE = os.path.join(SAN, "ticket_state.json")
 kho_flow.DH_STATE = os.path.join(SAN, "dat_hang.json")   # quyết định đặt hàng thử, không đụng file thật
 import xuat_kho  # noqa: E402

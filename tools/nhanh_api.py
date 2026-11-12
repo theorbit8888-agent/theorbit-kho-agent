@@ -163,3 +163,61 @@ def gmv_nv(tu, den):
         x["hd"] += 1 if dau > 0 else 0
     NH._ghi("gmv_nv.json", {"tu": tu, "den": den, "luc": datetime.now().strftime("%Y-%m-%d %H:%M"), "nv": out, "nguon": "api"})
     return out
+
+
+SAN_ECOM = {"shopee": 8195, "tiktok": 8855}   # appId sàn trong API ecom (khác saleChannel)
+TEN_TRA = {1: "hoàn tiền ngay", 2: "trả hàng hoàn tiền", 3: "đổi mới"}
+
+
+def don_theo_id(oid):
+    """Đơn Nhanh theo ID (ưu tiên cache, không có thì gọi order/list ids)."""
+    import nhanh as NH
+    o = NH.orders().get(str(oid))
+    if o:
+        return o
+    try:
+        d = goi("order/list", {"filters": {"ids": [int(oid)]}, "paginator": {"size": 5}}).get("data") or []
+    except Exception:
+        return None
+    for x in d:
+        i, c, ch = x.get("info") or {}, x.get("carrier") or {}, x.get("channel") or {}
+        return {"id": str(i.get("id")), "kenh": KENH_ID.get(_so(ch.get("saleChannel")), "ngoai"),
+                "ma_san": str(ch.get("appOrderId") or ""), "mvd": str(c.get("carrierCode") or ""),
+                "st": _so(i.get("status")), "st_ten": TEN_ST.get(_so(i.get("status")), ""),
+                "sp": [{"ma": p.get("code"), "sl": _so(p.get("quantity"))} for p in (x.get("products") or [])]}
+    return None
+
+
+def tra_hoan(mvd):
+    """MVĐ hoàn SAU GIAO (khách trả hàng trên Shopee/TikTok, mã vận đơn khác đơn đi) → yêu cầu trả hàng + đơn gốc.
+    Trả dict {kenh, ma_san, nhanh_id, return_id, loai, ly_do, tt_san, sp:[{ma, sl}], sp_san:[tên sàn]} hoặc None."""
+    if not co_api() or not mvd:
+        return None
+    for kenh, app in SAN_ECOM.items():
+        try:
+            d = goi("ecom/return", {"filters": {"appId": app, "returnIdOrReturnTrackingNumber": str(mvd)},
+                                    "paginator": {"icpp": 5}}).get("data") or []
+        except Exception:
+            continue
+        if not d:
+            continue
+        x = d[0]
+        ps = x.get("productsInfor") or []
+        r = {"kenh": kenh, "ma_san": str(x.get("originalEcomOrderId") or ""), "nhanh_id": str(x.get("nhanhOrderId") or ""),
+             "return_id": str(x.get("returnId") or ""), "loai": TEN_TRA.get(_so(x.get("returnType")), ""),
+             "ly_do": (x.get("reasonInfor") or {}).get("reasonName") or (x.get("reasonInfor") or {}).get("reasonDescription") or "",
+             "tt_san": (x.get("ecomStatus") or {}).get("name") or "",
+             "sp_san": [f"{p.get('name', '')[:60]} {('· ' + p['sku']) if p.get('sku') else ''} x{p.get('quantity')}".strip() for p in ps],
+             "sp": []}
+        # SKU chuẩn Nhanh: Shopee trả đúng mã SKU; TikTok chỉ có tên phân loại → lấy từ đơn gốc trên Nhanh
+        import nhanh as NH
+        prods = NH.products()
+        if ps and all(str(p.get("sku") or "").upper() in prods for p in ps):
+            r["sp"] = [{"ma": p["sku"], "sl": _so(p.get("quantity"))} for p in ps]
+        elif r["nhanh_id"]:
+            o = don_theo_id(r["nhanh_id"])
+            if o:
+                r["sp"] = o["sp"]
+                r["ca_don"] = True   # SP của cả đơn gốc (khách có thể chỉ trả 1 phần)
+        return r
+    return None
