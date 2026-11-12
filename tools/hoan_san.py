@@ -6,7 +6,8 @@ Tác vụ lịch (Claude in Chrome của chủ shop) chạy tools/doc_san.js →
   python3 tools/hoan_san.py --tiktok tt.csv --shopee sp.csv [--tong-tiktok N] [--tong-shopee N] [--send]
 CSV mỗi dòng: ma|loai|ly_do|tt|han|kv|tien|nut|mvd   (thiếu file sàn nào = không đọc được sàn đó)
 Đối chiếu bảng 09 · HÀNG HOÀN NHẬN: kiện kho đã nhận chưa + tình trạng → CSKH biết đồng ý hoàn hay khiếu nại/kháng nghị.
-Tag CSKH: CSKH_TAG trong ~/.config/orbit-kho/lark.env (VD "@mai_cs @lan_cs").
+Tag CSKH theo CA LÀM: đọc lịch ca ~/orbit-runtime/lich/ca.json (bot HCNS ghi mỗi tuần: khung giờ + người từng ca + ID
+Telegram) → tag người đang trong ca CSKH; ngoài giờ ca thì tag ca kế tiếp. Không có lịch → CSKH_TAG trong lark.env.
 """
 import json, os, re, sys
 from datetime import datetime, timedelta
@@ -21,6 +22,41 @@ STATE = os.path.join(KF.ROOT, "logs", "hoan_san.json")
 COLS = ("ma", "loai", "ly_do", "tt", "han", "kv", "tien", "nut", "mvd")
 CAN_XL = {"phan_hoi", "xac_nhan", "bang_chung"}     # shop phải bấm trên sàn
 TEN = {"tiktok": "TikTok", "shopee": "Shopee"}
+
+
+LICH_CA = os.path.expanduser(os.environ.get("ORBIT_LICH_CA", "~/orbit-runtime/lich/ca.json"))
+
+
+def nguoi_ca(luc=None, nhom="CSKH"):
+    """[(tên, telegram id)] người đang trong ca `nhom` lúc `luc`; ngoài khung ca → ca kế tiếp trong ngày (sau 22h: ca 1 mai)."""
+    luc = luc or datetime.now()
+    try:
+        d = json.load(open(LICH_CA))
+    except Exception:
+        return []
+    khung = sorted(((int(v.split("-")[0]), int(v.split("-")[1]), k) for k, v in (d.get("khung", {}).get(nhom) or {}).items()))
+    if not khung:
+        return []
+    ngay, ca = luc, None
+    for a, b, k in khung:
+        if a <= luc.hour < b:
+            ca = k; break
+    if not ca:
+        sau = [k for a, b, k in khung if luc.hour < a]
+        ca = sau[0] if sau else khung[0][2]
+        if not sau:
+            ngay = luc + timedelta(days=1)
+    ten_ = (d.get("lich", {}).get(nhom, {}).get(ngay.strftime("%Y-%m-%d")) or {}).get(ca) or []
+    ids = d.get("nguoi", {})
+    return [(t, ids.get(t)) for t in dict.fromkeys(ten_)]
+
+
+def tag_ca(luc=None):
+    ds = nguoi_ca(luc)
+    if not ds:
+        return esc(str(TK.E.get("CSKH_TAG") or "").strip())
+    return "📣 CSKH trong ca: " + ", ".join(f'<a href="tg://user?id={i}">{esc(t)}</a>' if i else f"<b>{esc(t)}</b>"
+                                          for t, i in ds)
 
 
 def doc_csv(f):
@@ -105,7 +141,7 @@ def bao(d):
     except Exception:
         cu = {}
     rows = kho_09()
-    tag = str(TK.E.get("CSKH_TAG") or "").strip()
+    tag = tag_ca()
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     moi_st, out, kho, tom = {}, [], [], []
     for k in ("tiktok", "shopee"):
@@ -124,7 +160,7 @@ def bao(d):
         xong = [m for m, v in cu.items() if v.get("kenh") == k and v.get("nut") in CAN_XL and m not in {x["ma"] for x in ds}]
         L = [f"💸 <b>{TEN[k].upper()} — HOÀN TIỀN / TRẢ HÀNG CẦN CSKH XỬ LÝ</b> {datetime.now():%d/%m} · đọc sàn {esc(d.get('luc', ''))}"]
         if tag:
-            L.append(esc(tag))
+            L.append(tag)
         if can:
             L.append(f"\n🔴 <b>{len(can)} yêu cầu chờ shop phản hồi</b>" + (f" · ⏰ <b>{len(gap)} hết hạn trong 24h</b>" if gap else "")
                      + (" (Seller Center › Trả hàng và hoàn tiền › Đang chờ bạn)" if k == "tiktok"
