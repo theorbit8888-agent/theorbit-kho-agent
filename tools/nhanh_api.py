@@ -142,3 +142,21 @@ if __name__ == "__main__":
     if not co_api():
         print("Chưa có mã API Nhanh → chủ shop chạy: bash ~/kho-agent/tools/ket-noi-nhanh-api.sh"); sys.exit(2)
     print(sync())
+
+
+def gmv_nv(tu, den):
+    """GMV bán lẻ theo người bán (hoá đơn bán lẻ mode 2): NV bán hàng nếu có gắn, không thì người tạo hoá đơn.
+    Hoá đơn xuất (type 2) cộng, hoá đơn nhập trả lại (type 1) trừ. tu/den: YYYY-MM-DD (tối đa 31 ngày)."""
+    import nhanh as NH
+    out = {}
+    for b in tat_ca("bill/list", {"modes": [2], "fromDate": tu, "toDate": den}, toi_da=300, sort=False):
+        ai = ((b.get("sale") or {}).get("name") or (b.get("created") or {}).get("name") or "").strip()
+        if not ai:
+            continue
+        tien = float((b.get("payment") or {}).get("amount") or 0)
+        dau = -1 if _so(b.get("type")) == 1 else 1
+        x = out.setdefault(ai, {"gmv": 0.0, "hd": 0})
+        x["gmv"] += dau * tien
+        x["hd"] += 1 if dau > 0 else 0
+    NH._ghi("gmv_nv.json", {"tu": tu, "den": den, "luc": datetime.now().strftime("%Y-%m-%d %H:%M"), "nv": out, "nguon": "api"})
+    return out

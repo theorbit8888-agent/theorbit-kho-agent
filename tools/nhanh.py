@@ -319,6 +319,9 @@ def sau_sync():
 if __name__ == "__main__":
     a = sys.argv[1:] or ["help"]
     if a[0] == "gmv":   # nhanh.py gmv YYYY-MM-DD YYYY-MM-DD -> JSON (bot HCNS xếp rank NVBH)
+        import nhanh_api as NA
+        if NA.co_api():
+            print(json.dumps(NA.gmv_nv(a[1], a[2]), ensure_ascii=False)); sys.exit(0)
         try:
             print(json.dumps(gmv_nv(a[1], a[2]), ensure_ascii=False))
         except CanDangNhap as e:

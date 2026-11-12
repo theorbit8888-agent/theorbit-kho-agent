@@ -1368,6 +1368,10 @@ def handle(u):
     if lenh == "/dangnhapnhanh":
         if str(uid) not in duyet_ids():
             return tsend(chat, "Chỉ chủ shop dùng lệnh này.")
+        import nhanh_api as NA
+        if NA.co_api():
+            return tsend(chat, "✅ Bot kho đã nối Nhanh qua API (tự đọc 30 phút/lần), không cần đăng nhập Chrome nữa. "
+                               "Mã API hết hạn/bị thu hồi thì gõ /ketnoinhanh.")
         import subprocess
         subprocess.Popen([os.path.join(ROOT, ".venv", "bin", "python"), os.path.join(ROOT, "tools", "nhanh.py"), "login"],
                          cwd=ROOT, stdout=open(os.path.join(ROOT, "logs", "nhanh-login.out"), "a"),
