@@ -823,13 +823,52 @@ def kiemkho(m, arg):
             tsend(o, "⚠️ <b>Kiểm kho lệch</b>\n" + t)
 
 
+def ban_hom_qua():
+    """Số lượng bán ra hôm qua theo mã mẫu (đơn đã giao ĐVVC hôm qua, theo Nhanh)."""
+    from collections import Counter
+    hq = (datetime.now() - timedelta(days=1)).date()
+    keys = sorted(sku_bang(), key=len, reverse=True)
+    c = Counter()
+    for o in NH.orders().values():
+        if not (NH._ngay(o.get("gui_dvvc")) == hq or (o.get("st") == 59 and NH._ngay(o.get("cap_nhat")) == hq)):
+            continue
+        for sp in o.get("sp") or []:
+            ma = str(sp.get("ma") or "").upper()
+            mau = next((k for k in keys if ma == k or ma.startswith(k + "-")), None)
+            if mau and not mau.startswith(("PK-", "CB-")):
+                c[mau] += int(sp.get("sl") or 1)
+    return c
+
+
 def goi_y_kiem(n=5):
-    """Mẫu cần kiểm hôm nay: xoay vòng bảng SKU Nhanh (bỏ phụ kiện), ~5 mẫu/ngày."""
-    maus = [k for k in sku_bang() if not k.startswith(("PK-", "CB-"))]
+    """Mẫu cần kiểm hôm nay: ưu tiên mẫu BÁN RA HÔM QUA (nhiều nhất trước), thiếu thì bù bằng xoay vòng bảng SKU
+    (bỏ phụ kiện/combo). Chốt 1 lần/ngày để danh sách 9h và /kiemkho luôn khớp thứ tự."""
+    k = "kiem" + today()
+    if TK.STATE_KF.get(k):
+        return TK.STATE_KF[k]["maus"]
+    maus = [m for m in sku_bang() if not m.startswith(("PK-", "CB-"))]
     if not maus:
         return []
+    try:
+        ban = ban_hom_qua()
+    except Exception as e:
+        print("kho_flow: đọc hàng bán hôm qua lỗi", e, flush=True)
+        ban = {}
+    chon = [m for m, _ in sorted(ban.items(), key=lambda x: -x[1])][:n]
     i = (datetime.now().timetuple().tm_yday * n) % len(maus)
-    return (maus + maus)[i:i + n]
+    for m in (maus + maus)[i:]:
+        if len(chon) >= n:
+            break
+        if m not in chon:
+            chon.append(m)
+    TK.STATE_KF[k] = {"maus": chon, "ban": {m: ban[m] for m in chon if m in ban}}
+    TK._save()
+    return chon
+
+
+def ly_do_kiem(mau):
+    b = (TK.STATE_KF.get("kiem" + today()) or {}).get("ban", {}).get(mau)
+    return f"bán hôm qua {b}" if b else "xoay vòng"
 
 
 # ======================= nút =======================
@@ -1017,7 +1056,9 @@ def hen(send=False):
         cho = [r for r in TG.rows(TK.HOAN, fresh=True) if not r.get("Người nhận")]
         co_nh = NH.con_moi(180)
         ds = ds_kiem_hom_nay()
-        out = ("🔢 <b>Kiểm kho hôm nay</b> (xoay vòng) — đếm theo thứ tự rồi gõ <b>chỉ các số</b>, "
+        n_ban = sum(1 for m in maus if ly_do_kiem(m) != "xoay vòng")
+        out = ("🔢 <b>Kiểm kho hôm nay</b> (" + (f"{n_ban} mẫu bán chạy hôm qua + xoay vòng" if n_ban else "xoay vòng")
+               + ") — đếm theo thứ tự rồi gõ <b>chỉ các số</b>, "
                f"VD <code>/kiemkho {' '.join(['12'] * min(len(ds), 3))} …</code>"
                + (" (bot tự so tồn Nhanh)" if co_nh else "") + ":\n"
                + "\n".join(f"{i}. {esc(s)}" for i, s in enumerate(ds, 1)))
