@@ -217,12 +217,63 @@ def con_moi(phut=120):
 
 
 def don_theo_ma(ma):
-    """Tìm đơn theo MVĐ / mã đơn sàn / ID Nhanh."""
-    k = str(ma).strip().lower().lstrip("#")
-    for o in orders().values():
-        if k and k in (o["mvd"].lower(), o["ma_san"].lower(), o["id"]):
-            return o
+    """Tìm đơn theo MVĐ / mã đơn sàn / ID Nhanh. Mã tem hoàn (khác MVĐ gửi) → đơn gốc qua sổ logs/ma_hoan.json."""
+    k = chuan_ma(ma)
+    for kk in (k, goc_hoan(k).lower()):
+        for o in orders().values():
+            if kk and kk in (o["mvd"].lower(), o["ma_san"].lower(), o["id"]):
+                return o
     return None
+
+
+# ---- mã tem HOÀN → đơn gốc -------------------------------------------------------------------------------------
+# Khách trả hàng: ĐVVC dán tem hoàn MỚI (TikTok 854…, Shopee SPXVN0… 17 số) ≠ MVĐ lúc gửi → kho quét /hoan bằng tem này.
+# Tác vụ lịch 8h30/15h30 tra mã đó trên trang Trả hàng của sàn (ô tìm kiếm "Mã vận đơn trả hàng", chỉ đọc) → ghi sổ.
+# JT hoàn đơn ngoài sàn dán tem "<MVĐ>-001" → bỏ đuôi.
+MA_HOAN_F = os.path.join(ROOT, "logs", "ma_hoan.json")
+
+
+def chuan_ma(ma):
+    import re
+    return re.sub(r"-\d{3}$", "", str(ma or "").strip().lower().lstrip("#"))
+
+
+def ma_hoan():
+    try:
+        return json.load(open(MA_HOAN_F, encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def goc_hoan(ma):
+    """Mã tem hoàn → mã đơn sàn gốc ('' nếu chưa tra được)."""
+    return (ma_hoan().get(chuan_ma(ma)) or {}).get("ma_san", "")
+
+
+def ghi_ma_hoan(cap, kenh):
+    """cap = {mã tem hoàn: mã đơn sàn}. Chỉ ghi khi ra đúng 1 đơn. Trả số mã mới ghi."""
+    import re
+    d, moi = ma_hoan(), 0
+    for k, v in cap.items():
+        k, v = chuan_ma(k), str(v or "").strip()
+        if k and re.fullmatch(r"[0-9A-Z]{10,20}", v) and (d.get(k) or {}).get("ma_san") != v:
+            d[k] = {"ma_san": v, "kenh": kenh, "luc": datetime.now().strftime("%Y-%m-%d %H:%M")}
+            moi += 1
+    tmp = MA_HOAN_F + ".tmp"
+    json.dump(d, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    os.replace(tmp, MA_HOAN_F)
+    return moi
+
+
+def nhap_tra():
+    """{ID đơn Nhanh: phiếu nhập trả} — đơn đã được kho nhập trả trên Nhanh (gồm đơn trả '<mã sàn>R')."""
+    return _doc("nhap_tra.json") or {}
+
+
+def don_tra(ngay=14):
+    """Khách TRẢ HÀNG đã nhập trả trên Nhanh: Nhanh tạo đơn trả '<mã đơn sàn>R' (không MVĐ) kèm phiếu nhập trả."""
+    return [o for o in orders().values() if o["ma_san"].endswith("R") and o["st"] in HOAN_ST
+            and (_ngay(o["tao"]) or datetime.now().date()) >= datetime.now().date() - timedelta(days=ngay)]
 
 
 def ton_sku(sku):

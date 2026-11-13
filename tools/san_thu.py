@@ -32,6 +32,11 @@ HƯỚNG DẪN (mỗi dòng):
   doichieu-nhap           như sau mỗi lần đồng bộ Nhanh: đối chiếu phiếu nhập ↔ hàng về (03), tự tick / báo lệch
   gio10                   chạy lượt 10h15 (đơn huỷ sau in trước khi shipper lấy)
   canhhuy                 như sau mỗi lần đồng bộ Nhanh: báo đơn vừa huỷ sau khi in (rút kiện)
+  nhanh-hoan MVĐ 72|74|71|61 [ngày gửi]   giả đơn hoàn ĐVVC / giao thất bại trên Nhanh
+  nhanh-tra MÃ_SÀN        giả kho nhập trả trên Nhanh (Nhanh tạo đơn trả MÃ_SÀN+R)
+  mahoan-can              in mã tem hoàn kho quét mà bot chưa ra đơn (tác vụ lịch sẽ tra trên sàn)
+  mahoan TEM MÃ_SÀN       giả tác vụ lịch tra tem hoàn trên sàn ra đơn gốc
+  doisoat-hoan            đối soát hàng hoàn Nhanh ↔ kho quét /hoan (như tin 9h/17h)
   hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   # ...                   ghi chú, bỏ qua
@@ -225,6 +230,7 @@ xuat_kho.HUY_F = os.path.join(SAN, "huy_sau_in.json")
 xuat_kho.THIEU_F = os.path.join(SAN, "nhanh_thieu.json")
 xuat_kho.LAY_F = os.path.join(SAN, "san", "lay_nhanh.json")
 kho_flow.NHAP_ST = os.path.join(SAN, "nhap_nhanh.json")
+NH.MA_HOAN_F = os.path.join(SAN, "ma_hoan.json")   # sổ mã tem hoàn → đơn gốc (giả)
 PHIEU_F = os.path.join(SAN, "phieu_nhap.json")   # phiếu nhập Nhanh giả (nhanh-phieu)
 kho_flow.phieu_nhap = lambda tu: [b for b in (json.load(open(PHIEU_F)) if os.path.exists(PHIEU_F) else []) if b["ngay"] >= tu]
 import hoan_san  # noqa: E402
@@ -395,6 +401,34 @@ def dong(line):
                    "sp": [{"ma": sku, "sl": 1}]}
         json.dump(od, open(p, "w"))
         return print(f"   (Nhanh có thêm đơn {ma_} {mvd})")
+    if cmd == "nhanh-hoan":   # nhanh-hoan GIA000001 72 [YYYY-MM-DD gửi]  → giả đơn hoàn ĐVVC (72 Đã chuyển hoàn, 74, 71, 61)
+        p = os.path.join(NH.CACHE, "orders.json")
+        od = json.load(open(p))
+        ma, so, ngay = (rest.split() + [time.strftime("%Y-%m-%d")])[:3]
+        for o in od.values():
+            if o["mvd"] == ma or o["ma_san"] == ma:
+                o.update(st=int(so), st_ten={72: "Đã chuyển hoàn", 74: "Xác nhận hoàn", 71: "Đang chuyển hoàn", 61: "Thất bại"}
+                         .get(int(so), so), cap_nhat=time.strftime("%Y-%m-%d %H:%M:%S"), gui_dvvc=ngay + " 10:00:00")
+        json.dump(od, open(p, "w"))
+        return print(f"   (Nhanh: {ma} → hoàn {so}, gửi {ngay})")
+    if cmd == "nhanh-tra":   # nhanh-tra 580000000003 → giả kho nhập trả trên Nhanh (Nhanh tạo đơn trả '<mã sàn>R')
+        p = os.path.join(NH.CACHE, "orders.json")
+        od = json.load(open(p))
+        g = next((o for o in od.values() if o["ma_san"] == rest.strip()), None)
+        oid = str(9800 + len(od))
+        od[oid] = {"id": oid, "kenh": g["kenh"] if g else "tiktok", "ma_san": rest.strip() + "R", "mvd": "", "dvvc": "",
+                   "st": 72, "st_ten": "Đã chuyển hoàn", "tao": time.strftime("%Y-%m-%d %H:%M:%S"),
+                   "cap_nhat": time.strftime("%Y-%m-%d %H:%M:%S"), "gui_dvvc": "", "kho": "", "sp": g["sp"] if g else []}
+        json.dump(od, open(p, "w"))
+        return print(f"   (Nhanh: nhập trả đơn {rest.strip()} → đơn trả {rest.strip()}R)")
+    if cmd == "mahoan-can":
+        return print("   CẦN TRA TRÊN SÀN:", json.dumps(kho_flow.ma_hoan_can(), ensure_ascii=False))
+    if cmd == "mahoan":   # mahoan 854000000001 580000000003 → giả tác vụ lịch tra tem hoàn trên TikTok ra đơn gốc
+        tem, ma_ = rest.split()[:2]
+        return print("   (sổ tem hoàn: ghi mới", NH.ghi_ma_hoan({tem: ma_}, "tiktok"), ")")
+    if cmd == "doisoat-hoan":
+        t, n = kho_flow.doi_soat_hoan_nhanh()
+        return print(re.sub(r"<[^>]+>", "", t) or "   (chưa có dữ liệu Nhanh)", f"\n   [cần xử lý: {n}]")
     if cmd == "nhanh-phieu":   # nhanh-phieu 180001 TS-H2-REDLINE-M:20,SO-A4-RIVET-M:38
         bid, _, ds = rest.partition(" ")
         bs = json.load(open(PHIEU_F)) if os.path.exists(PHIEU_F) else []

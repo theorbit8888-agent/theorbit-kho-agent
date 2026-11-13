@@ -672,21 +672,101 @@ def bao_nhanh_chot_ca():
     return "\n".join(L)
 
 
+BAT_DAU_HOAN = "2026-11-11"   # ngày kho bắt đầu quét /hoan — đơn gửi trước ngày này gom riêng "kiểm 1 lần"
+
+
+def _ds_ma(xs, n=30):
+    return "\n".join(f"• <code>{esc(o['mvd'] or o['ma_san'])}</code> {NH.TEN_KENH.get(o['kenh'], '')} {esc(o['st_ten'])}"
+                     + (f" ({esc(o['dvvc'])})" if o.get("dvvc") else "") for o in xs[:n]) + (f"\n… và {len(xs) - n} đơn nữa" if len(xs) > n else "")
+
+
 def doi_soat_hoan_nhanh():
-    """So đơn đang/đã hoàn trên Nhanh với kiện kho đã quét /hoan. Trả (text, số thiếu)."""
+    """So hàng hoàn trên Nhanh với kiện kho đã quét /hoan. Trả (text, số cần đòi/kiểm).
+    2 loại: (1) hoàn ĐVVC/giao thất bại — kiện về với MVĐ gửi; (2) khách trả hàng — tem hoàn MỚI, Nhanh tạo đơn trả
+    '<mã sàn>R'. Mã tem hoàn → đơn gốc qua sổ logs/ma_hoan.json (tác vụ lịch tra trên sàn)."""
     if not NH.con_moi(120):
         return "", 0
-    ds = NH.hang_hoan()
-    da = {str(r.get("MVĐ", "")).lower() for r in TG.rows(TK.HOAN, fresh=True) if r.get("Người nhận")}
-    thieu = [o for o in ds if o["mvd"].lower() not in da and o["ma_san"].lower() not in da]
-    co = len(ds) - len(thieu)
-    t = (f"↩️ <b>Hàng hoàn (Nhanh ↔ kho quét)</b>: Nhanh có <b>{len(ds)}</b> đơn hoàn/đang hoàn · kho đã quét <b>{co}</b>"
-         + (f" · <b>chưa thấy {len(thieu)}</b>" if thieu else " ✅"))
-    if thieu:
-        t += "\n" + "\n".join(f"• <code>{esc(o['mvd'])}</code> {NH.TEN_KENH.get(o['kenh'], '')} {esc(o['st_ten'])} "
-                               f"({esc(o['dvvc'])})" for o in thieu[:30])
-        t += "\nShipper trả kiện nào thì quét <code>/hoan MVĐ</code>; kiện không về → đòi shipper / ĐVVC."
-    return t, len(thieu)
+    quet = {}
+    for r in TG.rows(TK.HOAN, fresh=True):
+        if not r.get("Người nhận"):
+            continue
+        m = NH.chuan_ma(r.get("MVĐ"))
+        for k in (m, NH.goc_hoan(m).lower()):
+            if k:
+                quet[k] = r
+    khop = set()
+
+    def thay(o):
+        for k in (o["mvd"].lower(), o["ma_san"].lower(), o["ma_san"].lower()[:-1] if o["ma_san"].endswith("R") else "", o["id"]):
+            if k and k in quet:
+                khop.add(quet[k]["_id"])
+                return True
+        return False
+
+    def gui(o):
+        return (o["gui_dvvc"] or o["tao"])[:10]
+
+    dvvc = NH.hang_hoan()
+    chua = [o for o in dvvc if not thay(o)]
+    moi = sorted([o for o in chua if gui(o) >= BAT_DAU_HOAN], key=gui)
+    cu = [o for o in chua if gui(o) < BAT_DAU_HOAN]
+    tra = [o for o in NH.don_tra() if o["tao"][:10] >= BAT_DAU_HOAN]
+    tra_chua = [o for o in tra if not thay(o)]
+    # kiện kho đã quét (từ ngày bắt đầu) mà không khớp đơn hoàn nào trên Nhanh
+    le, nhanh_chua, nt = [], [], NH.nhap_tra()
+    r_goc = {x["ma_san"][:-1] for x in NH.don_tra(30)}
+    for r in TG.rows(TK.HOAN, fresh=True):
+        if not r.get("Người nhận") or r["_id"] in khop or str(r.get("Ngày") or "")[:10] < BAT_DAU_HOAN:
+            continue
+        if NH.goc_hoan(r.get("MVĐ")) in r_goc:      # tem hoàn đã tra ra đơn sàn, đơn đó Nhanh đã nhập trả (R)
+            continue
+        o = NH.don_theo_ma(r.get("MVĐ"))
+        if o and o["st"] not in NH.HOAN_ST and o["id"] not in nt and o["ma_san"] not in r_goc:
+            nhanh_chua.append((r, o))
+        elif not o:
+            le.append(r)
+    L = [f"↩️ <b>Hàng hoàn (Nhanh ↔ kho quét /hoan)</b> — tính từ {BAT_DAU_HOAN[8:]}/{BAT_DAU_HOAN[5:7]}"]
+    n_dv = len([o for o in dvvc if gui(o) >= BAT_DAU_HOAN])
+    da_ve = [o for o in moi if o["st"] == 72]          # Nhanh ghi "Đã chuyển hoàn"
+    dang_ve = [o for o in moi if o["st"] != 72]        # Đang chuyển hoàn / Xác nhận hoàn / Thất bại
+    L.append(f"📦 <b>Hoàn ĐVVC / giao thất bại</b>: Nhanh {n_dv} · kho đã quét {n_dv - len(moi)}"
+             + (f" · <b>chưa quét {len(moi)}</b>" if moi else " ✅"))
+    if da_ve:
+        L.append(f"  Nhanh ghi <b>Đã chuyển hoàn</b> mà kho chưa /hoan ({len(da_ve)}) → kiện trên kệ chưa? có thì quét:\n" + _ds_ma(da_ve))
+    if dang_ve:
+        L.append(f"  Đang trên đường về / mới xác nhận hoàn ({len(dang_ve)}) → shipper trả thì quét; quá 7 ngày chưa về thì đòi ĐVVC:\n"
+                 + _ds_ma(dang_ve))
+    if tra:
+        L.append(f"🔁 <b>Khách trả hàng</b>: kho đã nhập trả trên Nhanh {len(tra)} đơn (tồn Nhanh đã cộng lại)"
+                 + (f" · <b>{len(tra_chua)} đơn chưa có /hoan</b> → CSKH chưa có tình trạng kiện (lần sau: quét <code>/hoan</code> tem hoàn trước, rồi mới nhập Nhanh)"
+                    if tra_chua else " · /hoan đủ ✅"))
+    if nhanh_chua:
+        L.append(f"⚠️ <b>Kho đã nhận {len(nhanh_chua)} kiện mà Nhanh chưa nhập trả</b> (tồn Nhanh đang thiếu) → vào Nhanh nhập trả:\n"
+                 + "\n".join(f"• <code>{esc(r.get('MVĐ'))}</code> → đơn {esc(o['ma_san'] or o['id'])} "
+                              f"{NH.TEN_KENH.get(o['kenh'], '')} ({esc(o['st_ten'])})" for r, o in nhanh_chua[:20]))
+    if le:
+        L.append(f"❔ {len(le)} kiện kho quét chưa ra đơn Nhanh (tem hoàn Shopee/TikTok bot tra trên sàn lúc 8h30 + 15h30; còn lại là đơn gửi trước 14 ngày): "
+                 + ", ".join(f"<code>{esc(r.get('MVĐ'))}</code>" for r in le[:15]) + ("…" if len(le) > 15 else ""))
+    if cu:
+        L.append(f"🗂 <b>{len(cu)} đơn hoàn gửi trước {BAT_DAU_HOAN[8:]}/{BAT_DAU_HOAN[5:7]}</b> (trước khi có /hoan) chưa quét → "
+                 "kiểm kệ hàng hoàn 1 lần: có kiện thì <code>/hoan MVĐ</code>, không có thì báo trưởng kho:\n" + _ds_ma(cu, 15))
+    if moi:
+        L.append("Shipper trả kiện nào thì quét <code>/hoan MVĐ</code> (tem hoàn hay tem gửi đều được); kiện không về → đòi shipper / ĐVVC.")
+    return "\n".join(L), len(moi) + len(nhanh_chua)
+
+
+def ma_hoan_can(ngay=14):
+    """Mã kho quét /hoan (≤ `ngay` ngày) chưa ra đơn Nhanh và chưa có trong sổ tem hoàn → {"tiktok": [...], "shopee": [...]}."""
+    tu = (datetime.now() - timedelta(days=ngay)).strftime("%Y-%m-%d")
+    out = {"tiktok": [], "shopee": []}
+    for r in TG.rows(TK.HOAN, fresh=True):
+        m = NH.chuan_ma(r.get("MVĐ")).upper()
+        if not m or str(r.get("Ngày") or "")[:10] < tu or NH.goc_hoan(m) or NH.don_theo_ma(m):
+            continue
+        k = "shopee" if m.startswith(("SPXVN", "VN")) else "tiktok" if re.fullmatch(r"\d{9,15}", m) else ""
+        if k and m not in out[k]:
+            out[k].append(m)
+    return out
 
 
 def canh_bao_nhap(ngay=14, cover=7, toi_thieu=5):
@@ -1462,6 +1542,12 @@ if __name__ == "__main__":
         nhac_dat_hang("--send" in a)
     elif a[0] == "nhapnhanh":   # sau mỗi lần đồng bộ Nhanh: đối chiếu phiếu nhập ↔ hàng về (03)
         doi_chieu_nhap("--send" in a)
+    elif a[0] == "mahoan-can":   # mã tem hoàn kho đã quét mà bot chưa ra đơn → tác vụ lịch tra trên sàn
+        for k, v in ma_hoan_can().items():
+            print(k + ":", ",".join(v))
+    elif a[0] == "mahoan-ghi":   # python3 tools/kho_flow.py mahoan-ghi <file "mã|ID đơn"> tiktok|shopee
+        cap = dict(l.strip().split("|", 1) for l in open(a[1], encoding="utf-8") if "|" in l)
+        print("ghi mới:", NH.ghi_ma_hoan(cap, a[2] if len(a) > 2 else ""), "/", len(cap), "mã")
     elif a[0] == "hen":
         hen("--send" in a)
     elif a[0] == "sanbao":  # python3 tools/kho_flow.py sanbao '<json>' [--send] [--luon]

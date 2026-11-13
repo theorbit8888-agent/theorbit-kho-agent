@@ -1,0 +1,26 @@
+# Hàng hoàn: 2 loại (hoàn ĐVVC giữ MVĐ gửi / khách trả hàng dán TEM HOÀN mới) + đơn cũ trước khi có /hoan
+nhanh-gia
+nhanh-them 580000000077 802000000001 ngoai SO-A4-RIVET-M
+nhanh-st 802000000001 60
+nhanh-hoan GIA000000 72
+nhanh-hoan GIA000001 74
+nhanh-hoan GIA000002 72 2026-11-03
+nhanh-tra 580000000003
+nhanh-tra 580000000004
+la kho
+# kiện hoàn ĐVVC: quét đúng MVĐ gửi → khớp
+kho: /hoan GIA000000
+bam 1
+# khách trả hàng: tem hoàn TikTok mới 854… → bot chưa biết
+kho: /hoan 854000000001
+bam 1
+# JT trả kiện web, tem có đuôi -001, Nhanh chưa nhập trả
+kho: /hoan 802000000001-001
+bam 1
+doisoat-hoan
+# tác vụ lịch 8h30/15h30: lấy mã cần tra → tra trên trang Trả hàng TikTok → ghi sổ
+mahoan-can
+mahoan 854000000001 580000000003
+doisoat-hoan
+# KHÔNG áp dụng: tem lạ không ra đơn trên sàn → vẫn báo ❔, không ghi sổ
+mahoan-can

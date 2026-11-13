@@ -145,9 +145,29 @@ def orders(ngay=14):
     return dons
 
 
+def nhap_tra(ngay=14):
+    """Phiếu NHẬP TRẢ hàng (type 1 mode 1) → {ID đơn Nhanh gốc: {bill, luc, nguoi}}. Đơn sàn trả: Nhanh tạo đơn '<mã sàn>R'
+    (orderId của phiếu); đơn web trả: phiếu ghi 'Trả từ đơn: <ID gốc>'. Chỉ lưu ID, không lưu ghi chú/khách."""
+    import re
+    tu = (datetime.now() - timedelta(days=ngay)).strftime("%Y-%m-%d")
+    out = {}
+    for b in tat_ca("bill/list", {"fromDate": tu, "toDate": datetime.now().strftime("%Y-%m-%d"), "type": 1, "modes": [1]},
+                    toi_da=60, sort=False):
+        cr = b.get("created") or {}
+        v = {"bill": str(b.get("id")), "luc": _gio(cr.get("createdAt")), "nguoi": str(cr.get("name") or "")}
+        g = re.search(r"Trả từ đơn:\s*(\d+)", str(b.get("description") or ""))
+        for k in ([g.group(1)] if g else []) + ([str(b.get("orderId"))] if b.get("orderId") else []):
+            out[k] = v
+    return out
+
+
 def sync(ngay=14):
     import nhanh as NH
     prods, dons = products(), orders(ngay)
+    try:
+        NH._ghi("nhap_tra.json", nhap_tra(ngay))
+    except Exception as e:  # noqa: BLE001 — thiếu phiếu nhập trả không được làm hỏng đồng bộ đơn/tồn
+        print("nhanh_api: đọc phiếu nhập trả lỗi", e)
     m = NH.meta() or {}
     m.setdefault("bat_dau", datetime.now().strftime("%Y-%m-%d %H:%M"))
     m.update(dong_bo=datetime.now().strftime("%Y-%m-%d %H:%M"), so_sp=len(prods), so_don=len(dons), loi="", nguon="api")

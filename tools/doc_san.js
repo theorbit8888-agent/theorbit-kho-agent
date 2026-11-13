@@ -171,3 +171,30 @@ window.__layDonNhanh = async (mas) => {
   return {n: mas.length, ok: (t.match(/Thành công\s*(\d+)/) || [])[1], loi_sl: (t.match(/Thất bại\s*(\d+)/) || [])[1]};
 };
 'san sang'
+
+// Tra MÃ TEM HOÀN (kho quét /hoan) → ID đơn gốc, trên trang Trả hàng TikTok (https://seller-vn.tiktok.com/order/return).
+// Dùng đúng truy vấn ô tìm kiếm của trang (CHỈ ĐỌC danh sách). codes: mảng mã. Kết quả window.__out "mã|ID đơn" mỗi dòng
+// (ID rỗng = không ra; "nhieu:…" = ra nhiều đơn, bot bỏ qua).
+window.__traMaHoanTikTok = async (codes) => {
+  await __ngu(3000);
+  const e = performance.getEntriesByType('resource').map(x => x.name)
+    .find(u => /seller-vn\.tiktok\.com\/api\/.*[?&]oec_seller_id=/.test(u));
+  if (!e) return {loi: 'không thấy oec_seller_id (trang chưa tải xong / chưa đăng nhập)'};
+  const q = new URL(e).searchParams, p = new URLSearchParams();
+  for (const k of ['locale', 'language', 'oec_seller_id', 'seller_id', 'aid', 'app_name']) if (q.get(k)) p.set(k, q.get(k));
+  const url = '/api/v1/reverse/component/orders/list?' + p, out = {};
+  for (const c of codes) {
+    const body = {search_condition: {tab: {str_value_list: ['100']}, order_sort_comp: {str_value_list: ['OrderSort_UPADTE_TIME_DESC']},
+                  search_numbers: {str_value_list: [c]}}, pagination_type: 0, offset: 0, count: 20, component_version: 'hit_ui_opt'};
+    try {
+      const j = await (await fetch(url, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body),
+                                         credentials: 'include'})).json();
+      const ids = [...new Set((j.data?.cards || []).map(x => (JSON.stringify(x)
+        .match(/"bulk_shipping_popup_print_result_order_id","(\d+)"/) || [])[1]).filter(Boolean))];
+      out[c] = ids.length === 1 ? ids[0] : ids.length ? 'nhieu:' + ids.join(',') : '';
+    } catch (err) { out[c] = ''; }
+    await __ngu(400);
+  }
+  window.__out = Object.entries(out).map(([k, v]) => k + '|' + v).join('\n');
+  return {n: codes.length, ra: Object.values(out).filter(v => /^\d+$/.test(v)).length};
+};
