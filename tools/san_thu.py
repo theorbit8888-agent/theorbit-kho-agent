@@ -37,6 +37,8 @@ HƯỚNG DẪN (mỗi dòng):
   mahoan-can              in mã tem hoàn kho quét mà bot chưa ra đơn (tác vụ lịch sẽ tra trên sàn)
   mahoan TEM MÃ_SÀN       giả tác vụ lịch tra tem hoàn trên sàn ra đơn gốc
   doisoat-hoan            đối soát hàng hoàn Nhanh ↔ kho quét /hoan (như tin 9h/17h)
+  hoan-lui N              lùi mốc "bot thấy lần đầu / kiện về / kho /hoan" trong sổ hoan-san N GIỜ LÀM (thử nhắc theo hạn)
+  lydo                    thống kê lý do hoàn theo mẫu TUẦN NÀY (bot ghi tuần trước vào file CEO 9h thứ 2)
   hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   # ...                   ghi chú, bỏ qua
@@ -235,6 +237,8 @@ PHIEU_F = os.path.join(SAN, "phieu_nhap.json")   # phiếu nhập Nhanh giả (n
 kho_flow.phieu_nhap = lambda tu: [b for b in (json.load(open(PHIEU_F)) if os.path.exists(PHIEU_F) else []) if b["ngay"] >= tu]
 import hoan_san  # noqa: E402
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
+hoan_san.LDH.SO = os.path.join(SAN, "hoan_ly_do.json")
+hoan_san.LDH.OUT = os.path.join(SAN, "ly-do-hoan.md")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN
 
@@ -456,6 +460,25 @@ def dong(line):
         return print(re.sub(r"<[^>]+>", "", xuat_kho.bao_chieu()[0]))
     if cmd == "canhhuy":
         return print(re.sub(r"<[^>]+>", "", xuat_kho.canh_huy(True)) or "   (không có đơn huỷ sau in mới)")
+    if cmd == "lydo":
+        return print(hoan_san.LDH.bao(hoan_san.datetime.now()))
+    if cmd == "hoan-lui":   # hoan-lui 3 → mọi mốc trong sổ hoan-san lùi 3 giờ làm (8h–22h)
+        from datetime import timedelta
+        n, st = float(rest or 0), json.load(open(hoan_san.STATE))
+        def lui(s_):
+            t = hoan_san._dt(s_)
+            if not t:
+                return s_
+            x = t
+            while hoan_san.gio_lam(x, t) < n:
+                x -= timedelta(minutes=10)
+            return x.strftime("%Y-%m-%d %H:%M")
+        for v in st.values():
+            for k_ in ("lan_dau", "lan_ve", "lan_kho"):
+                if k_ in v:
+                    v[k_] = lui(v[k_])
+        json.dump(st, open(hoan_san.STATE, "w"), ensure_ascii=False, indent=1)
+        return print(f"   (lùi sổ hoan-san {n:g} giờ làm)")
     if cmd == "hoan-san":   # hoan-san kich-ban/hoan-tiktok.csv kich-ban/hoan-shopee.csv
         f = rest.split()
         d = {"luc": time.strftime("%H:%M")}

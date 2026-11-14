@@ -1449,6 +1449,12 @@ def nhac(send=False):
         L.append("\n<b>Hôm qua</b>: " + ", ".join(f"{k} {v}" for k, v in dem.items()))
     if datetime.now().weekday() == 0:
         L.append(bao_cao_tuan(rs))
+        if send:
+            try:   # thống kê lý do hoàn theo mẫu tuần trước → file theo dõi của CEO
+                import ly_do_hoan
+                ly_do_hoan.ghi()
+            except Exception as e:
+                print("ticket: ly_do_hoan lỗi", e, flush=True)
     text = "\n".join(L)
     if len(L) == 1:
         text += "\nKhông có việc trễ 🎉"

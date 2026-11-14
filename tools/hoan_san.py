@@ -16,6 +16,7 @@ import orbit_tg as TG
 import ticket as TK
 import nhanh as NH
 import kho_flow as KF
+import ly_do_hoan as LDH
 
 esc, tsend = TK.esc, TK.tsend
 STATE = os.path.join(KF.ROOT, "logs", "hoan_san.json")
@@ -55,8 +56,77 @@ def tag_ca(luc=None):
     ds = nguoi_ca(luc)
     if not ds:
         return esc(str(TK.E.get("CSKH_TAG") or "").strip())
-    return "📣 CSKH trong ca: " + ", ".join(f'<a href="tg://user?id={i}">{esc(t)}</a>' if i else f"<b>{esc(t)}</b>"
-                                          for t, i in ds)
+    return "📣 CSKH trong ca: " + _tag(ds)
+
+
+# HẠN NỘI BỘ (CEO 14/11, phương án hậu mãi TikTok) — tính theo GIỜ LÀM 8h–22h kể từ lúc bot thấy lần đầu:
+SLA_PHAN_HOI = 4     # yêu cầu chờ shop phản hồi → CSKH trong ca
+SLA_KHO = 4          # sàn ghi kiện đã giao về shop → kho /hoan + ảnh
+SLA_XAC_NHAN = 2     # kho /hoan "đúng hàng" → CSKH bấm xác nhận/hoàn trên sàn
+GIO_LAM = (8, 22)
+SAN_50, SAN_HET = 12, 4   # hạn sàn còn ≤12h = quá 50%; ≤4h = coi như quá hạn (kịp bấm)
+
+
+def _dt(s):
+    try:
+        return datetime.strptime(str(s)[:16], "%Y-%m-%d %H:%M")
+    except Exception:
+        return None
+
+
+def gio_lam(tu, den=None):
+    """Số giờ làm (8h–22h) giữa 2 mốc."""
+    den = den or datetime.now()
+    h, d = 0.0, tu
+    while d < den:
+        a = d.replace(hour=GIO_LAM[0], minute=0, second=0, microsecond=0)
+        b = d.replace(hour=GIO_LAM[1], minute=0, second=0, microsecond=0)
+        h += max(0, (min(b, den) - max(a, d)).total_seconds()) / 3600
+        d = (d + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return h
+
+
+def muc_han(x, lan_dau):
+    """0 trong hạn · 1 quá 50% hạn · 2 quá hạn — hạn = min(4h giờ làm nội bộ, hạn sàn)."""
+    di = gio_lam(_dt(lan_dau) or datetime.now())
+    g = gio_con(x)
+    if di >= SLA_PHAN_HOI or (g is not None and g <= SAN_HET):
+        return 2
+    if di >= SLA_PHAN_HOI / 2 or (g is not None and g <= SAN_50):
+        return 1
+    return 0
+
+
+def luc_kho(r, cu_luc):
+    """Lúc kho /hoan: bảng 09 chỉ có ngày → ngày cũ hơn hôm nay coi như 22h hôm đó; hôm nay → lúc bot thấy lần đầu."""
+    n = str(r.get("Ngày") or "")[:10]
+    t = _dt(cu_luc) or datetime.now()
+    try:
+        d = datetime.strptime(n, "%Y-%m-%d").replace(hour=GIO_LAM[1])
+        return min(t, d) if d.date() < datetime.now().date() else t
+    except Exception:
+        return t
+
+
+def _tag(ten_id):
+    return ", ".join(f'<a href="tg://user?id={i}">{esc(t)}</a>' if i else f"<b>{esc(t)}</b>" for t, i in ten_id)
+
+
+def tag_quan_ly():
+    """Trưởng ca CSKH (ca.json "truong_ca" → {"CSKH": "Tên"} hoặc env TRUONG_CA_CSKH) + chủ shop (OWNER_TELE_ID)."""
+    ds = []
+    try:
+        d = json.load(open(LICH_CA))
+        t = (d.get("truong_ca") or {}).get("CSKH")
+        if t:
+            ds.append((t, d.get("nguoi", {}).get(t)))
+    except Exception:
+        pass
+    if not ds and TK.E.get("TRUONG_CA_CSKH"):
+        ds.append((str(TK.E["TRUONG_CA_CSKH"]), None))
+    if TK.E.get("OWNER_TELE_ID"):
+        ds.append(("chủ shop", TK.E["OWNER_TELE_ID"]))
+    return _tag(ds)
 
 
 def doc_csv(f):
@@ -124,6 +194,10 @@ def loi(r):
 
 
 def dong(x, r, moi):
+    return _dong(x, r, moi) + {1: " · 🔺quá 50% hạn", 2: " · 🚨 <b>QUÁ HẠN</b>"}.get(x.get("_muc", 0), "")
+
+
+def _dong(x, r, moi):
     loai = "Chỉ hoàn tiền" if "chỉ hoàn" in x["loai"].lower() else "Hoàn ngay" if "ngay" in x["loai"].lower() else "Trả hàng"
     tien = x["tien"] if x["tien"] not in ("", "0") else ""
     return (f"• <code>{esc(x['ma'])}</code> {loai} · {esc(x['ly_do'][:40])}" + (f" · {esc(tien)}" + ("" if "₫" in tien else "₫") if tien else "")
@@ -143,16 +217,35 @@ def bao(d):
     rows = kho_09()
     tag = tag_ca()
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    moi_st, out, kho, tom = {}, [], [], []
+    moi_st, out, kho, tom, kho_tre = {}, [], [], [], []
     for k in ("tiktok", "shopee"):
         ds = d.get(k)
         if ds is None:
             out.append(f"❔ <b>{TEN[k]}</b>: không đọc được trang trả hàng/hoàn tiền — CSKH tự vào kiểm tra.")
             continue
+        try:
+            LDH.ghi_so(ds, k)      # sổ lý do sàn cho thống kê thứ 2
+        except Exception as e:
+            print("hoan_san: sổ lý do lỗi", e, file=sys.stderr)
         for x in ds:
             x["_r"] = tim_09(x, rows)
             x["_moi"] = x["ma"] not in cu
-            moi_st[x["ma"]] = {"kenh": k, "nut": x["nut"], "lan_dau": (cu.get(x["ma"]) or {}).get("lan_dau", now), "lan_cuoi": now}
+            c = cu.get(x["ma"]) or {}
+            st = {"kenh": k, "nut": x["nut"], "lan_dau": c.get("lan_dau", now), "lan_cuoi": now}
+            r = x["_r"]
+            nhan = bool(r and r.get("Người nhận"))
+            if x.get("kv") == "Đã giao" and not nhan:
+                st["lan_ve"] = c.get("lan_ve", now)      # sàn ghi kiện đã về shop, kho chưa /hoan
+            if nhan:
+                st["lan_kho"] = c.get("lan_kho", now)
+            moi_st[x["ma"]] = st
+            x["_st"] = st
+            x["_muc"] = muc_han(x, st["lan_dau"]) if x["nut"] in CAN_XL else 0
+            # kho /hoan ĐÚNG HÀNG mà sàn còn chờ shop → hạn 2h cho CSKH bấm
+            x["_dung"] = (gio_lam(luc_kho(r, st["lan_kho"])) if nhan and not loi(r) and x["nut"] in CAN_XL else None)
+            if x["_dung"] is not None and x["_dung"] >= SLA_XAC_NHAN:
+                x["_muc"] = 2
+            x["_kho_tre"] = gio_lam(_dt(st["lan_ve"])) if st.get("lan_ve") else 0
         can = sap_xep([x for x in ds if x["nut"] in CAN_XL])
         dang = sap_xep([x for x in ds if x["nut"] == "dang_tra"])
         sau = sap_xep([x for x in ds if x["nut"] in ("khang_nghi", "kiem_hang")])
@@ -168,8 +261,21 @@ def bao(d):
             L += [dong(x, x["_r"], x["_moi"]) for x in can[:25]]
             if len(can) > 25:
                 L.append(f"… +{len(can) - 25} yêu cầu nữa")
+            qh = [x for x in can if x["_muc"] == 2]
+            nua = [x for x in can if x["_muc"] == 1]
+            if qh:
+                L.append(f"🚨 <b>{len(qh)} yêu cầu QUÁ HẠN</b> (quá {SLA_PHAN_HOI}h giờ làm hoặc hạn sàn còn ≤{SAN_HET}h)"
+                         + (f" → {tag_quan_ly()}" if tag_quan_ly() else ""))
+            if nua:
+                L.append(f"🔺 {len(nua)} yêu cầu đã quá 50% hạn" + (f" → {tag}" if tag else ""))
             L.append("→ Kiện đã về + kho ghi ✅ nguyên vẹn: đồng ý hoàn. Kho ghi ⚠️ sai/thiếu/lỗi: từ chối/khiếu nại kèm ảnh kho. "
                      "Kiện chưa về: chờ kho quét <code>/hoan</code>, sát hạn thì hỏi kho ngay.")
+        dung = sorted((x for x in can if x["_dung"] is not None and x["_dung"] >= SLA_XAC_NHAN), key=lambda x: -x["_dung"])
+        if dung:
+            L.append(f"\n⏱ <b>{len(dung)} ca kho đã /hoan ĐÚNG HÀNG quá {SLA_XAC_NHAN}h mà sàn chưa xác nhận</b> — "
+                     "vào sàn bấm xác nhận nhận hàng/hoàn tiền ngay" + (f" · {tag}" if tag else "") + ":\n"
+                     + "\n".join(f"• <code>{esc(x['ma'])}</code> · {kho_txt(x['_r'])} · đã {int(x['_dung'])}h giờ làm"
+                                 for x in dung[:20]))
         if dang:
             L.append(f"\n🚚 {len(dang)} người mua đang gửi trả (kiện chưa về kho): "
                      + ", ".join(f"<code>{esc(x['ma'])}</code>{han_txt(x)}" for x in dang[:12]))
@@ -194,14 +300,22 @@ def bao(d):
         ck = [x for x in can + sau if x.get("kv") in ("Đã giao",) and not (x["_r"] and x["_r"].get("Người nhận"))]
         if ck:
             kho.append(f"• <b>{TEN[k]}</b> {len(ck)} kiện: " + ", ".join(
-                f"<code>{esc(x['mvd'] or x['ma'])}</code>{han_txt(x)}" for x in sap_xep(ck)[:20]))
-        tom.append(f"{TEN[k]}: {len(can)} cần phản hồi ({len(gap)} ≤24h), {len(dang)} đang gửi trả, {len(sau)} đã hoàn")
+                f"<code>{esc(x['mvd'] or x['ma'])}</code>{han_txt(x)}"
+                + (f" · 🚨 về {int(x['_kho_tre'])}h chưa /hoan" if x["_kho_tre"] >= SLA_KHO else "")
+                for x in sorted(ck, key=lambda x: -x["_kho_tre"])[:20]))
+            tre = [x for x in ck if x["_kho_tre"] >= SLA_KHO]
+            if tre:
+                kho_tre.append(len(tre))
+        tom.append(f"{TEN[k]}: {len(can)} cần phản hồi ({len(gap)} ≤24h, {sum(x['_muc'] == 2 for x in can)} quá hạn), "
+                   f"{len(dang)} đang gửi trả, {len(sau)} đã hoàn")
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     json.dump(moi_st, open(STATE, "w"), ensure_ascii=False, indent=1)
     kt = ""
     if kho:
         kt = ("↩️ <b>KIỆN HOÀN CSKH ĐANG CHỜ KIỂM</b> — sàn ghi đã giao về shop, kho chưa quét. Tìm kiện, kiểm rồi "
-              "<code>/hoan MVĐ</code> (lỗi/thiếu thì chụp ảnh) để CSKH duyệt/khiếu nại kịp hạn:\n" + "\n".join(kho))
+              "<code>/hoan MVĐ</code> + ảnh, ghi rõ <i>đúng hàng, còn tag</i> hoặc lỗi gì — hạn ≤4h trong giờ làm, không để qua đêm:\n"
+              + "\n".join(kho)
+              + (f"\n🚨 <b>{sum(kho_tre)} kiện đã quá {SLA_KHO}h</b> chưa /hoan → CSKH đang kẹt bước \"kiểm tra mặt hàng\"." if kho_tre else ""))
     return out, kt, "; ".join(tom)
 
 

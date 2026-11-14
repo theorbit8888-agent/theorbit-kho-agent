@@ -1,0 +1,18 @@
+# NHẮC THEO HẠN hậu mãi (CEO 14/11): phản hồi ≤4h, kho /hoan ≤4h, đúng hàng → CSKH bấm sàn ≤2h (giờ làm 8h–22h)
+la kho
+# kho nhận 2 kiện Shopee: 1 đúng hàng, 1 sai hàng (KHÔNG áp dụng hạn 2h "đúng hàng")
+kho: /hoan SPXVNHAN0001
+kho: /hoan SPXVNHAN0002
+bam 3
+# lần đọc đầu: chưa ai quá hạn, trừ TikTok ...102 hạn sàn còn 10h (≤12h → quá 50%)
+hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
+# 3 giờ làm sau: phản hồi quá 50% → tag lại CSKH ca; SPXVNHAN0001 đúng hàng quá 2h → báo riêng; kiện SPHAN0003 về 3h → chưa 🚨
+hoan-lui 3
+hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
+# thêm 2 giờ làm: quá 4h → QUÁ HẠN, tag trưởng ca + chủ shop; nhóm Kho: kiện về 5h chưa /hoan → 🚨
+# không áp dụng: ...103 kháng nghị, SPHAN0004 đang gửi trả → không nhắc hạn
+hoan-lui 2
+hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
+#
+# THỐNG KÊ LÝ DO HOÀN theo mẫu (thứ 2): lý do khách chọn trên sàn ghi từ lần đọc sàn ở trên
+lydo
