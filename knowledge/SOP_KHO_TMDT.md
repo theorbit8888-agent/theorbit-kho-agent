@@ -3,7 +3,7 @@
 Mục tiêu: **không giao trễ, không giao sai, không mất hàng hoàn, tồn trên sàn = tồn thật.** Đây là bộ việc chuẩn của kho TMĐT; chỗ ghi "⚠ cần xác minh" là số/hạn phụ thuộc chính sách sàn hiện hành — người kho kiểm lại trên Seller Center rồi ghi vào mục "Quy định shop đã chốt" ở cuối.
 - (12/11/2026, chủ shop — đổi lại) **In đơn ở sàn** (TikTok Shop / Shopee Seller Center). 7h30 bot đồng bộ Nhanh rồi đối soát với đơn cần gửi trên sàn: đơn sàn có mà Nhanh chưa có = tồn Nhanh chưa trừ → kho kéo đơn về Nhanh (Đơn sàn › Lấy đơn); bot nhắc 9h + 17h tới khi Nhanh có. Kiện /giao mà Nhanh không có cũng bị nhắc như vậy. Đơn sàn Nhanh tự cập nhật trạng thái theo sàn, kho không làm biên bản bàn giao trên Nhanh.
 - (12/11/2026) Đơn huỷ sau khi đã in tem/bấm Chuẩn bị hàng: kho rút kiện ra khỏi khay giao, chụp tem chú thích /giulai; bot nhắc 9h/17h tới khi đủ. Đơn huỷ mà đã giao shipper → đòi shipper trả kiện. Quá 1 ngày không thấy kiện → xem camera bàn giao, báo trưởng kho. 17h bot gửi TỔNG KẾT đơn huỷ sau in/gói trong ngày: kho đếm khay đơn huỷ phải đủ số kiện đã giữ.
-- (12/11/2026) Yêu cầu hoàn tiền/trả hàng trên sàn: bot báo nhóm Đổi trả CS-Kho 8h30 + 15h30, tag CSKH đang trong ca (theo lịch ca HCNS); CSKH duyệt/từ chối trên sàn dựa vào tình trạng kiện kho ghi ở bảng 09 (kho kiện về là quét /hoan ngay, lỗi/thiếu chụp ảnh).
+- (12/11/2026, sửa 14/11) Yêu cầu hoàn tiền/trả hàng trên sàn: bot báo nhóm Đổi trả CS-Kho 8h30 + 15h30, tag CSKH đang trong ca (theo lịch ca HCNS); **CSKH chỉ phản hồi yêu cầu mới**. Kiện về kho: **kho** quét /hoan, kiểm, rồi tự bấm xác nhận nhận hàng/đồng ý hoàn hoặc khiếu nại/kháng nghị trên sàn (chủ shop chốt 14/11) — bot đối chiếu sàn ngay khi /hoan và nhắc nhóm Kho.
 
 Bối cảnh shop (từ dữ liệu Nhanh.vn & Lark): 2 kho — **KHO TỔNG Q2** (~79% đơn) và **KHO CỬA HÀNG Phú Nhuận** (~21%); ĐVVC chính J&T Express (~68%), TVC (~31%); 96% đơn 1 sản phẩm; kho đóng cửa 18h. Nhóm Lark liên quan: KHO - CSKH THE ORBIT, NOTE ĐƠN HÀNG (đổi size), REFUND (xin hoàn tiền), TỔNG HỢP - LỖI DO KHO.
 
@@ -55,12 +55,13 @@ Ai làm gì:
 | Tiếp nhận yêu cầu, thu ảnh/video khách, lý do | CSKH (agent CSKH) |
 | Xem bằng chứng, quyết định **chấp nhận / từ chối / đề xuất hoàn một phần** khi chưa cần hàng về | Người duyệt (chủ shop/CS lead — nhóm REFUND) |
 | Nhận kiện trả về, **quay video mở kiện**, kiểm: đúng hàng shop gửi, đủ món, còn tag, không bẩn/mùi/hư, đúng size khách nói | **Kho** |
-| Bấm "Đã nhận hàng/Đồng ý hoàn tiền" hoặc "Khiếu nại/Từ chối" trên Seller Center | Người duyệt, dựa trên kết quả kiểm của kho |
+| Bấm "Đã nhận hàng/Đồng ý hoàn tiền" hoặc "Khiếu nại/Kháng nghị" trên Seller Center | **Kho — người mở kiện** (chủ shop chốt 14/11/2026; tài khoản phụ Seller Center quyền Trả hàng/Hoàn tiền). CSKH không bấm bước này |
 | Nhập lại tồn (hàng nguyên vẹn) hoặc chuyển khu lỗi | Kho |
 
 Quy tắc:
 - **Hạn phản hồi**: mỗi yêu cầu trên sàn có đồng hồ đếm ngược; quá hạn thì sàn **tự động chấp nhận hoàn tiền** cho khách (⚠ cần xác minh số giờ/ngày cụ thể cho TikTok và Shopee hiện hành). → Ghi "Hạn xử lý trên sàn" vào 06 ngay khi có yêu cầu; bot nhắc khi còn ≤24h.
-- Hàng trả về **sai/thiếu/đã qua sử dụng/không phải hàng shop** → KHÔNG xác nhận nhận hàng; khiếu nại sàn trong hạn kèm video mở kiện + video đóng gói lúc gửi đi.
+- **Luồng /hoan (từ 14/11/2026):** kho quét `/hoan <tem>` → bot đối chiếu yêu cầu trên sàn (lần đọc sàn gần nhất + API trả hàng Nhanh): **✅ KHỚP** (đơn, món + size + SL khách trả, hạn còn) / **⚠️ LỆCH** (món khách trả không khớp đơn gốc → gợi ý khiếu nại) / **❔ chưa thấy** (bot kiểm lại lượt đọc sàn sau, tự báo lại). Kho bấm trên sàn XONG rồi bấm nút **[Đã duyệt] / [Khiếu nại]** ở tin bot → ghi bảng 09 + tắt nhắc. Bot chỉ đọc sàn, không tự bấm.
+- Hàng trả về **sai/thiếu/đã qua sử dụng/mất tag/không phải hàng shop** → KHÔNG xác nhận nhận hàng; **kho** khiếu nại/kháng nghị trên sàn trong hạn kèm video mở kiện + video đóng gói lúc gửi đi.
 - Hàng nguyên vẹn → nhập lại đúng SKU trong ngày (để bán lại), Kết quả = "Nguyên vẹn - nhập lại", tick "Đã nhập lại Nhanh.vn".
 - Lỗi do shop (giao sai size, lỗi may) → ghi thêm vào nhóm **TỔNG HỢP - LỖI DO KHO** nếu lỗi do kho, để tính KPI.
 
@@ -102,5 +103,5 @@ Theo `QUY_TRINH_KIEM_HANG_NHAP_KHO.md` (quy trình gốc của shop). Tóm tắt
 ## 7. Quy định shop đã chốt
 (Ghi khi chủ shop/trưởng kho chốt: hạn sàn đã xác minh, người duyệt hoàn, thời gian lưu video, ai nhận ca nào…)
 - **Đối soát đơn đi theo từng MVĐ** (11/11/2026): in đơn gõ `/indon` (bot chốt danh sách cần gửi từ Nhanh); giao shipper thì chụp tem chú thích `/giao` (đơn đã huỷ bot báo giữ lại ngay); 17h bot so cần gửi ↔ kho quét ↔ sàn ghi ĐVVC lấy, ghi 07; 9h hôm sau nhắc kiện đã giao mà sàn vẫn chưa ghi lấy (đòi shipper/khiếu nại ĐVVC). `/chotdi` đếm tay chỉ dùng khi chưa có Nhanh.
-- **Hạn hàng hoàn (CEO giao 14/11/2026, áp dụng từ 15/11, chờ chủ shop xác nhận):** kiện hoàn về kho → quét `/hoan MVĐ` + chụp ảnh **≤ 4 giờ trong giờ làm, không để qua đêm**; chọn rõ tình trạng (✅ đúng hàng, còn tag / lỗi-bẩn / tráo / thiếu). CSKH: phản hồi yêu cầu mới ≤ 4h giờ ca; kho ghi ✅ thì bấm xác nhận/hoàn trên sàn ≤ 2h. Bot (hoan_san.py) đánh 🔺 khi quá 50% hạn (tag lại CSKH trong ca), 🚨 khi quá hạn (tag trưởng ca + chủ shop), nhóm Kho thấy kiện sàn ghi đã về mà quá 4h chưa /hoan. Bot không bấm duyệt/từ chối.
+- **Hàng hoàn — người bấm sàn = KHO (chủ shop chốt 14/11/2026: "kho sẽ bấm khiếu nại luôn"; hạn do CEO giao, áp dụng từ 15/11):** kiện hoàn về kho → quét `/hoan <tem>` + chụp ảnh **≤ 4 giờ trong giờ làm, không để qua đêm**, chọn rõ tình trạng. Bot đối chiếu sàn ngay (KHỚP/LỆCH/chưa thấy). Đúng hàng, còn tag → kho bấm **xác nhận nhận hàng / đồng ý hoàn** trên sàn **≤ 2h** sau /hoan; sai/tráo/thiếu/đã dùng/mất tag → kho bấm **khiếu nại/kháng nghị** kèm video mở kiện + video đóng gói. Bấm sàn xong bấm nút [Đã duyệt]/[Khiếu nại] ở tin bot. CSKH chỉ phản hồi yêu cầu mới ≤ 4h giờ ca (bot 🔺 quá 50% tag lại CSKH ca, 🚨 quá hạn tag trưởng ca + chủ shop). Nhóm Kho: 🚨 kiện sàn ghi đã về mà quá 4h chưa /hoan; ⏱ /hoan đúng hàng quá 2h chưa bấm sàn → tag kho trong ca + chủ shop; ⚠️ kho ghi lỗi mà chưa bấm khiếu nại. Bot không tự bấm gì trên sàn.
 - Phí đổi/trả với khách: thường shop hỗ trợ một chiều, khách chịu 25k (chủ shop chốt 02/11/2026 — từ agent CSKH).

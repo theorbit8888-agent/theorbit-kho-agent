@@ -17,6 +17,7 @@ import ticket as TK  # ticket CS (đổi/trả/hoàn) — nút bấm + phiếu n
 import kho_flow  # noqa: F401
 import day_bot  # noqa: F401  /day: team ghi bài dạy bot, chủ shop duyệt
 import ket_noi_nhanh  # noqa: F401  /ketnoinhanh: chủ shop nối Nhanh Open API từ điện thoại
+import hoan_san  # noqa: F401  /hoan → đối chiếu sàn + nút Đã duyệt/Khiếu nại (hs:)
 import cua_hang  # noqa: F401  CS + cửa hàng: /moca /chi /ketca /bill /goi /note /hoatoc /chotca  việc thủ kho: /hangve /chotdi /chothoan /kiemkho /kho (đăng ký vào ticket)
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))

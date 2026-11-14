@@ -1407,7 +1407,15 @@ def handle(u):
             return tsend(chat, sai, reply_to=m["message_id"])
         return EXT_CMDS[lenh](m, arg)
     if lenh == "/hoan":
-        return cmd_hoan(m, arg)
+        kq = cmd_hoan(m, arg)
+        mas = list(dict.fromkeys(x for x in ma_list(arg)))
+        if mas:   # đối chiếu yêu cầu trả hàng trên sàn → KHỚP/LỆCH + nút cho kho (chủ shop chốt 14/11)
+            try:
+                import hoan_san
+                hoan_san.gui_doi_chieu(m["chat"]["id"], mas, reply_to=m["message_id"])
+            except Exception as e:
+                print("ticket: đối chiếu sàn lỗi", repr(e)[:200], flush=True)
+        return kq
     if lenh == "/xem":
         return cmd_xem(m, arg, private)
     if lenh == "/dangdo":

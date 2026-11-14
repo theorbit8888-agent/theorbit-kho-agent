@@ -238,6 +238,9 @@ kho_flow.phieu_nhap = lambda tu: [b for b in (json.load(open(PHIEU_F)) if os.pat
 import hoan_san  # noqa: E402
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 hoan_san.LDH.SO = os.path.join(SAN, "hoan_ly_do.json")
+hoan_san.XU_LY = os.path.join(SAN, "hoan_xu_ly.json")
+hoan_san.CHO = os.path.join(SAN, "hoan_cho_san.json")
+hoan_san.KHO_LUC = os.path.join(SAN, "hoan_kho_luc.json")
 hoan_san.LDH.OUT = os.path.join(SAN, "ly-do-hoan.md")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN
@@ -478,6 +481,8 @@ def dong(line):
                 if k_ in v:
                     v[k_] = lui(v[k_])
         json.dump(st, open(hoan_san.STATE, "w"), ensure_ascii=False, indent=1)
+        kl = hoan_san._doc(hoan_san.KHO_LUC)
+        hoan_san._ghi(hoan_san.KHO_LUC, {t: lui(v) for t, v in kl.items()})
         return print(f"   (lùi sổ hoan-san {n:g} giờ làm)")
     if cmd == "hoan-san":   # hoan-san kich-ban/hoan-tiktok.csv kich-ban/hoan-shopee.csv
         f = rest.split()

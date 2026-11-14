@@ -1,0 +1,21 @@
+# LUỒNG HOÀN MỚI (chủ shop chốt 14/11): KHO bấm duyệt/khiếu nại trên sàn; /hoan → bot đối chiếu sàn + nút
+hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
+la kho
+# 1) Shopee tem hoàn khớp yêu cầu đang chờ xác nhận → ✅ KHỚP + nút; kho bấm sàn xong bấm "Đã duyệt" → ghi 09, tắt nhắc
+kho: /hoan SPXVNHAN0001
+bam 1
+# quét lại → báo đã xử lý, không ra nút nữa
+kho: /hoan SPXVNHAN0001
+# 2) TikTok: tem 854… đã tra ra đơn gốc → KHỚP; kho khiếu nại (kiện lỗi)
+mahoan 854000000102 58000000000000102
+kho: /hoan 854000000102
+bam 2
+# 3) KHÔNG ÁP DỤNG: tem lạ chưa có trên sàn → "chưa có trong lần đọc sàn", vào sổ chờ
+kho: /hoan 854999999999
+# lượt đọc sàn sau: sàn đã có yêu cầu của tem đó → bot tự báo lại nhóm Kho kèm nút
+mahoan 854999999999 58000000000000101
+hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
+# 4) kho /hoan đúng hàng nhưng CHƯA bấm sàn; quá 2h → nhắc nhóm KHO + chủ shop (ca SPXVNHAN0001 đã bấm thì không nhắc)
+kho: /hoan SPXVNHAN0003
+hoan-lui 3
+hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
