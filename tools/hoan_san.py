@@ -236,6 +236,7 @@ def bao(d):
         ds = d.get(k)
         if ds is None:
             out.append(f"❔ <b>{TEN[k]}</b>: không đọc được trang trả hàng/hoàn tiền — CSKH tự vào kiểm tra.")
+            moi_st.update({m: v for m, v in cu.items() if v.get("kenh") == k})   # giữ sổ cũ, không xoá
             continue
         try:
             LDH.ghi_so(ds, k)      # sổ lý do sàn cho thống kê thứ 2
