@@ -241,6 +241,7 @@ hoan_san.LDH.SO = os.path.join(SAN, "hoan_ly_do.json")
 hoan_san.XU_LY = os.path.join(SAN, "hoan_xu_ly.json")
 hoan_san.CHO = os.path.join(SAN, "hoan_cho_san.json")
 hoan_san.KHO_LUC = os.path.join(SAN, "hoan_kho_luc.json")
+hoan_san.LOI_DOC = os.path.join(SAN, "hoan_san_loi.json")
 hoan_san.LDH.OUT = os.path.join(SAN, "ly-do-hoan.md")
 TK.init(dict(ENV), start_worker=False)
 TG.S["root"] = SAN

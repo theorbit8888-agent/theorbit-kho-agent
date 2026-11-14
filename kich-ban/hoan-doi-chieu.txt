@@ -19,3 +19,7 @@ hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
 kho: /hoan SPXVNHAN0003
 hoan-lui 3
 hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
+#
+# KHÔNG ĐỌC ĐƯỢC SÀN (Chrome chưa cho phép trang / bị đăng xuất): không báo nhóm, giữ sổ cũ, nhắn riêng chủ shop 1 lần
+hoan-san
+hoan-san

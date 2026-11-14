@@ -532,16 +532,36 @@ def on_cb(cq, p):
 TK.EXT_CB["hs"] = on_cb
 
 
+LOI_DOC = os.path.join(KF.ROOT, "logs", "hoan_san_loi.json")
+
+
+def bao_loi_doc(hong):
+    st = _doc(LOI_DOC)
+    t = _dt(st.get("luc"))
+    if t and (datetime.now() - t).total_seconds() < 6 * 3600 and st.get("hong") == hong:
+        return
+    _ghi(LOI_DOC, {"luc": datetime.now().strftime("%Y-%m-%d %H:%M"), "hong": hong})
+    o = TK.E.get("OWNER_TELE_ID")
+    if o:
+        tsend(o, f"⚠️ Lượt đọc yêu cầu hoàn {datetime.now():%H:%M} không đọc được <b>{', '.join(hong)}</b> "
+                 "(thường do Chrome hỏi quyền mở trang mà không ai bấm, hoặc Seller Center bị đăng xuất). "
+                 "Bot không báo nhóm, giữ sổ cũ; lượt sau tự thử lại.")
+
+
 def chay(d, send=False):
     out, kt, tom = bao(d)
     for t in out:
         print(re.sub(r"<[^>]+>", "", t), "\n")
     if kt:
         print(re.sub(r"<[^>]+>", "", kt))
+    hong = [TEN[k] for k in ("tiktok", "shopee") if d.get(k) is None]
     if send:
+        if hong:   # sàn không đọc được: KHÔNG báo nhóm (gây nhiễu), nhắn riêng chủ shop tối đa 1 lần / 6h
+            bao_loi_doc(hong)
         if TK.tchat():
             for t in out:
-                tsend(TK.tchat(), t)
+                if not t.startswith("❔"):
+                    tsend(TK.tchat(), t)
         if kt and KF.kchat():
             tsend(KF.kchat(), kt)
     try:
