@@ -199,6 +199,13 @@ def esc(x):
     return html.escape(str(x or ""))
 
 
+def chuan_lenh(tok):
+    """'/Hoàn@bot' → '/hoan': bỏ dấu, chữ thường, bỏ @bot (team hay gõ /hoàn, /HOAN, /Đối soát…)."""
+    import unicodedata
+    t = str(tok or "").split("@")[0].lower().replace("đ", "d")
+    return "".join(c for c in unicodedata.normalize("NFD", t) if unicodedata.category(c) != "Mn")
+
+
 def ten(u):
     return " ".join(x for x in ((u or {}).get("first_name"), (u or {}).get("last_name")) if x) or str((u or {}).get("id"))
 
@@ -1265,7 +1272,7 @@ def on_update(u):
     chat, typ = str(m["chat"]["id"]), m["chat"]["type"]
     uid = (m.get("from") or {}).get("id")
     text = (m.get("text") or m.get("caption") or "").strip()
-    lenh = text.split()[0].lower().split("@")[0] if text.startswith("/") else ""
+    lenh = chuan_lenh(text.split()[0]) if text.startswith("/") else ""
     par = m.get("reply_to_message")
     if par and f"{chat}:{par['message_id']}" in PEND:
         JOBS.put(u); return True
@@ -1345,7 +1352,7 @@ def handle(u):
     if par and f"{chat}:{par['message_id']}" in PEND:
         return on_prompt_reply(m, PEND[f"{chat}:{par['message_id']}"])
     parts = text.split(maxsplit=1)
-    lenh = parts[0].lower().split("@")[0] if text.startswith("/") else ""
+    lenh = chuan_lenh(parts[0]) if text.startswith("/") else ""
     arg = parts[1].strip() if len(parts) > 1 else ""
     mg = m.get("media_group_id")
     if not lenh and mg and mg in ALBUM:

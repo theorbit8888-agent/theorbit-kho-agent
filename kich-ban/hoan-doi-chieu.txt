@@ -23,3 +23,8 @@ hoan-san kich-ban/hoan-han-tiktok.csv kich-ban/hoan-han-shopee.csv
 # KHÔNG ĐỌC ĐƯỢC SÀN (Chrome chưa cho phép trang / bị đăng xuất): không báo nhóm, giữ sổ cũ, nhắn riêng chủ shop 1 lần
 hoan-san
 hoan-san
+#
+# LỆNH CÓ DẤU / HOA (chị Huyền gõ "/hoàn" bị bỏ qua 14/11): /hoàn, /HOAN, /Hoàn@bot → như /hoan
+la kho
+kho: /hoàn SPXVNHAN0002
+kho: /HOAN SPXVNHAN0004
