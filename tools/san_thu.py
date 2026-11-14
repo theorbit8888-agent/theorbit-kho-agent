@@ -239,6 +239,8 @@ import hoan_san  # noqa: E402
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 hoan_san.LDH.SO = os.path.join(SAN, "hoan_ly_do.json")
 hoan_san.XU_LY = os.path.join(SAN, "hoan_xu_ly.json")
+import so_sheet
+so_sheet.CACHE = os.path.join(SAN, "so_sheet.json")
 hoan_san.CHO = os.path.join(SAN, "hoan_cho_san.json")
 hoan_san.KHO_LUC = os.path.join(SAN, "hoan_kho_luc.json")
 hoan_san.LOI_DOC = os.path.join(SAN, "hoan_san_loi.json")

@@ -392,6 +392,11 @@ def sau_sync():
                         "nhapnhanh", "--send"], timeout=180)
     except Exception as e:
         print("doi chieu nhap loi:", e)
+    try:   # sổ huỷ sau in / yêu cầu hoàn lên Sheet (chủ shop 14/11)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "so_sheet.py"),
+                        "dongbo"], timeout=300)
+    except Exception as e:
+        print("so_sheet loi:", e)
 
 
 if __name__ == "__main__":

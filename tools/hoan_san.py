@@ -568,6 +568,10 @@ def chay(d, send=False):
         kiem_lai_cho(send)      # tem kho /hoan lần trước chưa thấy trên sàn → đối chiếu lại
     except Exception as e:
         print("hoan_san: kiểm lại tem chờ lỗi", e, file=sys.stderr)
+    try:                        # chủ shop 14/11: sổ hoàn nằm trên Sheet để tự kiểm
+        import so_sheet; so_sheet.dong_bo()
+    except BaseException as e:
+        print("so_sheet:", e)
     return tom
 
 
