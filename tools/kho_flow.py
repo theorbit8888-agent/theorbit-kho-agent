@@ -846,6 +846,8 @@ def du_bao():
     for o in NH.orders().values():
         if o.get("st") in (58, 63, 64):  # huỷ
             continue
+        if o.get("kho") and str(o["kho"]) not in ("205577", "KHO TỔNG - CN QUẬN 2"):   # chỉ đơn xuất kho Q2 (tồn cũng là Q2)
+            continue
         for x in o.get("sp") or []:
             for ma, sl in NH.bung_combo(str(x.get("ma")), int(x.get("sl") or 0)):   # bán combo = bán SP con
                 ban[ma] = ban.get(ma, 0) + int(sl)

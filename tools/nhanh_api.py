@@ -100,18 +100,26 @@ def _so(x):
         return None
 
 
+KHO_Q2 = "205577"   # KHO TỔNG - CN QUẬN 2 (206425 = KHO CỬA HÀNG - CN PHÚ NHUẬN)
+
+
 def products():
     prods = {}
     for x in tat_ca("product/list", {"gpid": 3}):   # sản phẩm con + sản phẩm đơn (bỏ sản phẩm cha)
         if not x.get("code"):
             continue
-        inv = x.get("inventory") or {}
+        tong = x.get("inventory") or {}
+        # Chủ shop 15/11/2026: tồn = KHO TỔNG - CN QUẬN 2 (205577), không cộng kho cửa hàng Phú Nhuận.
+        inv = next((d for d in tong.get("depots") or [] if str(d.get("id")) == KHO_Q2), None)
+        if inv is None:
+            inv = {} if tong.get("depots") else tong      # SP không có dòng kho Q2 = Q2 không có hàng
         ton, giao = _so(inv.get("remain")), _so(inv.get("shipping")) or 0
         # "remain" của API = tồn gồm cả hàng đang giao; hàng THỰC Ở KHO (để kiểm kho) = remain - shipping
         # (khớp cột remainInDepot trên web Nhanh, đã đối chiếu 12 SKU ngày 12/11/2026)
         prods[x["code"]] = {"ten": x.get("name"), "ton": ton, "trong_kho": None if ton is None else ton - giao,
                             "co_the_ban": _so(inv.get("available")), "dang_giao": _so(inv.get("shipping")),
-                            "giu": _so(inv.get("holding")), "loi": _so(inv.get("damaged"))}
+                            "giu": _so(inv.get("holding")), "loi": _so(inv.get("damaged")),
+                            "ton_tat_ca": _so(tong.get("remain")), "co_the_ban_tat_ca": _so(tong.get("available"))}
         if x.get("combos"):   # combo CB-…: tồn tính theo SP con, bán combo = bán SP con
             prods[x["code"]]["combo"] = [{"ma": c.get("code"), "sl": _so(c.get("quantity")) or 1} for c in x["combos"] if c.get("code")]
     return prods
