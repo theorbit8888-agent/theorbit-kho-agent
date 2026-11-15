@@ -1,0 +1,18 @@
+# Kiểm kho cuối ngày: bot trừ phần lệch giải thích được (đơn chờ giao, kiện huỷ đang giữ, kiện hoàn chưa nhập Nhanh)
+# Nhanh giả: RIVET-L trong kho 10, có 9 đơn chờ giao RIVET-L x1. RIVET-S 23.
+la kho
+nhanh-gia
+nhanh-don
+# 1) đếm kệ 3 → lệch −7, 9 cái trong đơn chờ giao → khớp, KHÔNG điều chỉnh Nhanh, không có nút
+kho: /kiemkho\
+SO-A4-RIVET-L 3
+# 2) đếm 0 → lệch −10, trừ 9 chờ giao → còn −1 chưa rõ → có nút
+kho: /kiemkho\
+SO-A4-RIVET-L 0
+# 3) KHÔNG áp dụng: thừa +2 (không có kiện hoàn chưa nhập) → còn +2 chưa rõ; đơn chờ giao không trừ khi lệch dương
+kho: /kiemkho\
+SO-A4-RIVET-S 25
+# 4) khớp hẳn → không giải thích gì
+kho: /kiemkho\
+TS-H2-REDLINE-L 5
+bam 1

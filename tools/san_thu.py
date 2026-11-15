@@ -205,6 +205,7 @@ _sp = types.SimpleNamespace(run=lambda *a, **k: print("   (sân thử: bỏ qua 
                             Popen=lambda *a, **k: print("   (sân thử: bỏ qua mở Chrome Nhanh)"),
                             STDOUT=None, PIPE=None)
 kho_flow.subprocess = _sp
+kho_flow.TON_MOI = False   # sân thử: không đọc API Nhanh thật lúc /kiemkho
 TK.__dict__["subprocess"] = _sp
 import subprocess as _real_sp  # noqa: E402
 _goc_popen = _real_sp.Popen
