@@ -72,7 +72,16 @@ Phòng thử đã chạy được ngay. Các phần dưới còn giả/chưa có
 6. **Bot CSKH vào nhóm kho:** "Thêm nhóm THỬ · Xác nhận đơn + THỬ · Note khách; `/thu cskh-don`, `/thu cskh-note` gửi tin đúng mẫu tools/lark_notify.py bên agent CSKH (--group don/note), có tag kho."
 Mỗi việc xong: chạy lại phòng thử + `kich-ban/`, mở Pull Request ghi đã thử gì. **Không** xin token/API thật của shop: phần nào cần dữ liệu thật thì chủ shop thử trên máy thật.
 
-## 7. Luật
+## 7. Sửa xong: gửi về cho chủ shop thế nào
+1. Làm trên nhánh riêng: `git checkout -b <tên-bạn>/<việc>` (vd `my/hangve-anh`).
+2. Chạy lại phòng thử + `python3 tools/san_thu.py kich-ban/day-du.txt`; luồng mới thì thêm 1 file `kich-ban/<việc>.txt`
+   (có cả ví dụ KHÔNG áp dụng) — máy chủ shop sẽ tự chạy mọi kịch bản này trước khi lên bot thật.
+3. `git push -u origin <nhánh>` → trên GitHub bấm **Compare & pull request**, ghi: sửa gì, đã thử kịch bản nào.
+4. Chủ shop duyệt. Máy chạy thật dùng `bash tools/cap_nhat.sh thu <nhánh>` (chạy hết kịch bản trên bản sao riêng)
+   → `bash tools/cap_nhat.sh len <nhánh>` (gộp, cài lại job, kiểm bot còn chạy). Lỗi thì `cap_nhat.sh lui` quay về bản cũ.
+   Kịch bản nào hỏng là **không** lên được, nên đừng gửi nhánh chưa chạy thử.
+
+## 8. Luật
 - **Không bao giờ** chạy `tools/listener.py` hay dán token bot thật vào máy bạn: 2 máy nghe 1 bot sẽ giành tin, bot thật chạy sai.
 - Không đưa SĐT/STK/CCCD khách hoặc nhân viên vào code, kịch bản, nhóm thử.
 - Sửa code: nhánh riêng → chạy lại phòng thử + `kich-ban/` → Pull Request → chủ shop duyệt rồi mới lên bot thật.
