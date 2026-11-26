@@ -11,7 +11,8 @@ Chỉ cần repo này + Python 3 (Mac có sẵn) + Telegram:
 git clone https://github.com/theorbit8888-agent/theorbit-kho-agent.git
 cd theorbit-kho-agent
 ```
-Repo riêng tư: chủ shop phải mời tài khoản GitHub của bạn trước.
+Repo công khai: ai cũng tải về được. Muốn gửi sửa (đẩy nhánh) thì chủ shop phải mời tài khoản GitHub của bạn.
+Nhánh `main` đã khoá: chỉ gộp qua Pull Request (mục 7), không đẩy thẳng được.
 **Không** tải: file env, token, `logs/` của máy chủ shop (đã chặn trong .gitignore).
 
 ## 2. Dựng phòng thử (làm 1 lần, ~10 phút)
