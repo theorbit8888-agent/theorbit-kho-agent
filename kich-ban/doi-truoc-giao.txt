@@ -1,0 +1,38 @@
+# ĐỔI SIZE TRƯỚC KHI GIAO (ticket DHT) — chặn gói/giao nhầm + kiểm Nhanh khi kho bấm "đã đổi" (26/11)
+nhanh-don
+la cs
+doitra: /tk
+bam 2
+rieng: Mã đơn: TT1003\
+SKU: SO-A4-RIVET-L → M
+bam 1
+bam 1
+bam 1
+# 1) kho in đơn: TT1003 phải nằm trong mục "xử lý TRƯỚC khi gói"; các đơn khác KHÔNG
+la kho
+kho: /indon
+# 2) kho lỡ quét giao TT1003 → bot báo GIỮ LẠI; TT1004 (không có yêu cầu đổi) giao bình thường
+kho: /giao TT1003 TT1004
+bam 1
+# 3) kho bấm "Kho đã đổi trong đơn" mà CHƯA sửa trên Nhanh → bot KHÔNG đóng ticket, báo Nhanh vẫn size L
+doitra: /xem TT1003
+bam 1
+# 4) kho sửa trên Nhanh (giả) → bấm lại → ticket đóng, ghi "Nhanh đã đúng"
+nhanh-sp TT1003 SO-A4-RIVET-M
+doitra: /xem TT1003
+bam 1
+# hết chờ đổi → /indon không còn mục giữ lại, /giao TT1003 được
+kho: /giao TT1003
+#
+# 5) KHÔNG áp dụng: ticket đổi trước giao bị kho bấm "đã đổi" khi Nhanh chưa đồng bộ đơn → vẫn đóng, ghi "chưa kiểm được"
+la cs
+doitra: /tk
+bam 2
+rieng: Mã đơn: TT9999\
+SKU: SO-A4-RIVET-S → L
+bam 1
+bam 1
+bam 1
+la kho
+doitra: /xem TT9999
+bam 1

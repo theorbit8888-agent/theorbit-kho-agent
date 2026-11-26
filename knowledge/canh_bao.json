@@ -41,5 +41,69 @@
     "toi_thieu": 5,
     "da_dat_im": 30,
     "hoan": 3
-  }
+  },
+  "ticket_han_gio": {
+    "_ghi_chu": "Số GIỜ tối đa 1 ticket được nằm ở mỗi bước. Quá hạn → bot nhắc 10h/14h/18h (+ bản 9h). nhom: kho = nhóm Kho, doitra = nhóm Đổi trả CS-Kho.",
+    "Chờ kho đổi trong đơn": {
+      "gio": 2,
+      "nhom": "kho",
+      "viec": "Kho sửa size trong đơn trên Nhanh rồi bấm Đã đổi"
+    },
+    "Chờ nhập kho QLBH": {
+      "gio": 24,
+      "nhom": "kho",
+      "viec": "Kho nhập trả trên Nhanh rồi bấm Đã nhập kho QLBH"
+    },
+    "Chờ khiếu nại sàn": {
+      "gio": 24,
+      "nhom": "kho",
+      "viec": "Kho khiếu nại kiện hoàn xấu trên sàn"
+    },
+    "Chờ sàn trả lời": {
+      "gio": 72,
+      "nhom": "kho",
+      "viec": "Theo dõi sàn trả lời khiếu nại"
+    },
+    "Chờ gọi KH": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "CS gọi khách"
+    },
+    "Chờ tạo đơn đi": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "CS tạo đơn đi + gõ MVĐ"
+    },
+    "Chờ hoàn tiền": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "CS hoàn tiền khách + gửi bill"
+    },
+    "Chờ đòi ĐVVC": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "CS đòi ĐVVC trả hàng hoàn"
+    },
+    "Chờ khiếu nại ĐVVC": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "CS khiếu nại ĐVVC"
+    },
+    "Chờ ĐVVC trả lời": {
+      "gio": 72,
+      "nhom": "doitra",
+      "viec": "Theo dõi ĐVVC trả lời"
+    },
+    "Chờ CS gắn đơn": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "CS gắn mã đơn cho kiện hoàn"
+    },
+    "Chờ duyệt": {
+      "gio": 24,
+      "nhom": "doitra",
+      "viec": "Chủ shop duyệt"
+    }
+  },
+  "hoa_toc_doi_size_phut": 30
 }

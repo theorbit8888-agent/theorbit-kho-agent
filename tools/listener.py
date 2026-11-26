@@ -140,6 +140,11 @@ def main():
     if TG.tg_on():
         chats = [env.get("CHAT_ID")] + [v for k, v in env.items() if k.endswith("_CHAT_ID") and k != "SX_CHAT_ID" and not k.startswith("LARK_")]
         TK.init(env)
+        try:   # gõ "/" trong nhóm → hiện đúng lệnh của nhóm đó (tools/menu_lenh.py)
+            import menu_lenh
+            menu_lenh.dat_menu(env)
+        except Exception as e:
+            print("menu lệnh lỗi:", e, flush=True)
         TG.poll(on_tele, chats, allow_users=[OWNER], pre=TK.on_update); return
     import lark_oapi as lark
     from lark_oapi.api.im.v1 import P2ImMessageReceiveV1  # noqa: F401

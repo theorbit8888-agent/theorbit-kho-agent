@@ -41,6 +41,10 @@ HƯỚNG DẪN (mỗi dòng):
   lydo                    thống kê lý do hoàn theo mẫu TUẦN NÀY (bot ghi tuần trước vào file CEO 9h thứ 2)
   hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
+  nhanh-sp MVĐ SKU        giả kho sửa sản phẩm trong đơn trên Nhanh (đổi size trước khi giao)
+  tk-tre                  nhắc ticket quá hạn từng bước (như lịch 10/14/18h)
+  tk-lui ID GIỜ           lùi mốc vào bước hiện tại của ticket N giờ (thử nhắc quá hạn)
+  hoatoc-lui V-ID PHÚT    lùi thẻ hoả tốc đổi size N phút rồi chạy nhắc "chưa đổi size"
   # ...                   ghi chú, bỏ qua
 Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng sau.
 """
@@ -239,6 +243,7 @@ kho_flow.phieu_nhap = lambda tu: [b for b in (json.load(open(PHIEU_F)) if os.pat
 import hoan_san  # noqa: E402
 import tru_ton  # noqa: E402
 tru_ton.STATE_F = os.path.join(SAN, "tru_ton.json")
+cua_hang.HT_NHAC_F = os.path.join(SAN, "hoatoc_nhac.json")   # sổ "đã nhắc hoả tốc chưa đổi size"
 tru_ton.BAT_F = os.path.join(SAN, "tru_ton_bat")
 tru_ton.xuat_nhanh = lambda kho, sp, gc: "THU-" + str(int(time.time()))   # không bao giờ ghi Nhanh thật
 tru_ton.dieu_chinh = lambda kho, lech, gc: "xuất THU-1"
@@ -401,6 +406,37 @@ def dong(line):
                 o["cap_nhat"] = time.strftime("%Y-%m-%d %H:%M:%S")
         json.dump(od, open(p, "w"))
         return print(f"   (Nhanh: {ma} → {so})")
+    if cmd == "nhanh-sp":    # nhanh-sp MVĐ SKU  → giả kho sửa sản phẩm trong đơn trên Nhanh (đổi size trước giao)
+        p = os.path.join(NH.CACHE, "orders.json")
+        od = json.load(open(p))
+        ma, sku = rest.split()
+        for o in od.values():
+            if ma.lower() in (o["mvd"].lower(), o["ma_san"].lower(), o["id"]):
+                o["sp"] = [{"ma": sku.upper(), "sl": 1}]
+        json.dump(od, open(p, "w"))
+        json.dump({"dong_bo": time.strftime("%Y-%m-%d %H:%M")}, open(os.path.join(NH.CACHE, "meta.json"), "w"))
+        return print(f"   (Nhanh: đơn {ma} giờ là {sku.upper()})")
+    if cmd == "tk-tre":      # như lịch 10/14/18h: ticket quá hạn từng bước (canh_bao.json ticket_han_gio)
+        TK.nhac_tre(send=True)
+        return
+    if cmd == "tk-lui":      # tk-lui ID GIỜ → lùi mốc "vào bước hiện tại" của ticket (thử nhắc quá hạn)
+        tid, gio = rest.split()
+        r = TK.get(tid)
+        if not r:
+            return print(f"   (không thấy ticket {tid})")
+        t = time.strftime("%d/%m %H:%M", time.localtime(time.time() - float(gio) * 3600))
+        TK.upd(r, {"Lịch sử": (str(r.get("Lịch sử") or "") + f"\n{t} sân thử: lùi {gio} giờ").strip()})
+        return print(f"   ({tid} vào bước hiện tại lúc {t})")
+    if cmd == "hoatoc-lui":  # hoatoc-lui V-ID PHÚT → lùi "Lúc giao" thẻ việc rồi chạy nhắc hoả tốc chưa đổi size
+        vid, ph = rest.split()
+        import cua_hang as CH
+        for r in CH.rows(CH.VIEC):
+            if r.get("ID") == vid:
+                t = time.strftime("%Y-%m-%d %H:%M", time.localtime(time.time() - float(ph) * 60))
+                TG.kho("update", table=TG.sname(CH.VIEC), id=r["_id"], fields={"Lúc giao": t})
+        for c_, t_ in CH.nhac_hoatoc(send=True):
+            TK.tsend(c_, t_)
+        return
     if cmd in ("so-san", "canlay"):   # so-san kich-ban/so-tt.csv kich-ban/so-sp.csv
         f = (rest.split() + ["-", "-"])[:2]
         opt = {"--" + k: (os.path.join(ROOT, x) if not os.path.isabs(x) else x) for k, x in zip(("tiktok", "shopee"), f) if x != "-"}

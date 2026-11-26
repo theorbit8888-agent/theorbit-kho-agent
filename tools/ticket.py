@@ -1039,8 +1039,25 @@ def act(cq, tid, a):
     elif a == "nhap":
         upd(r, {"Nhập kho QLBH": f"✓ {who} {now()}"}, "nhập kho QLBH", who)
         return finish(r, who)
-    elif a == "doi_xong":
-        upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today()}, "kho đã đổi trong đơn", who)
+    elif a in ("doi_xong", "doi_ep"):
+        if st != "Chờ kho đổi trong đơn":
+            return answer(cq, "Ticket đã qua bước này")
+        ghi = "kho đã đổi trong đơn"
+        if a == "doi_xong":   # đọc Nhanh (chỉ đọc): đơn đã mang SKU mới chưa — chống bấm nút mà quên sửa đơn
+            try:
+                import giu_don as GD
+                kq, ly = GD.kiem_doi(r.get("Mã đơn"), r.get("SKU khách đang cầm"), r.get("SKU đổi sang"))
+            except Exception as e:
+                kq, ly = "chua_ro", f"lỗi đọc Nhanh: {e}"
+            if kq == "sai":
+                answer(cq, "Nhanh chưa đúng size", True)
+                return tsend(chat, f"⚠️ {esc(r['ID'])}: <b>{esc(ly)}</b>.\nSửa đơn trên Nhanh rồi bấm lại ✅ Kho đã đổi trong đơn "
+                                   "(bot kiểm lại sau lần đồng bộ kế tiếp). Đã sửa ở chỗ khác (VD trên sàn) → bấm nút dưới.",
+                             [[{"text": "✅ Đã kiểm tay — đúng rồi", "callback_data": f"tk:a:{r['ID']}:doi_ep"}]], reply_to=mid)
+            ghi += f" · Nhanh: {ly}" if kq == "ok" else f" · chưa kiểm được Nhanh ({ly})"
+        else:
+            ghi += " · kiểm tay (Nhanh chưa khớp lúc bấm)"
+        upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today()}, ghi, who)
     elif a == "da_di":
         upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today()}, "đơn đã đi, không đổi kịp", who)
         refresh(r, "🚚 Đơn đã đi rồi. Khách vẫn muốn đổi → CS mở /doi (đổi sau giao).", True)
@@ -1555,6 +1572,8 @@ def handle(u):
     if cq:
         p = cq["data"].split(":")
         uid = cq["from"]["id"]
+        if p[0] == "tk" and len(p) > 1 and p[1] in ("x", "huy") and "tn" in EXT_CB:
+            return EXT_CB["tn"](cq, p)   # nút /tonkho gửi trước 26/11 (tk:x / tk:huy) → kho_flow, không phải ticket
         if p[0] in EXT_CB:
             return EXT_CB[p[0]](cq, p)
         if p[1] == "w":
@@ -1721,6 +1740,12 @@ def nhac(send=False):
          lambda r: f"{esc(r['ID'])} {esc(r.get('Loại'))}")
     nhom("⚖️ Lỗi kho chờ xác nhận phạt", [r for r in rs if str(r.get("Phạt kho", "")).startswith("Chờ")],
          lambda r: f"{esc(r['ID'])} {esc(r.get('Lý do'))}")
+    da_co = {"Chờ hàng hoàn về", "Chờ gọi KH", "Chờ tạo đơn đi", "Chờ CS gắn đơn", "Chờ khiếu nại sàn",
+             "Chờ sàn trả lời", "Chờ duyệt"}   # các mục trên đã liệt kê
+    tre = [(r, g, c) for r, g, c in qua_han(rs) if r.get("Trạng thái") not in da_co]
+    if tre:
+        L.append(f"\n<b>⏳ Quá hạn ở bước khác</b> ({len(tre)})")
+        L.extend(dong_tre(r, g, c) for r, g, c in tre[:20])
     hq = [r for r in rs if str(r.get("Ngày tạo", ""))[:10] ==
           datetime.fromtimestamp(time.time() - 86400).strftime("%Y-%m-%d")]
     if hq:
@@ -1742,6 +1767,89 @@ def nhac(send=False):
     print(re.sub(r"<[^>]+>", "", text))
     if send and tchat():
         tsend(tchat(), text)
+
+
+# ---- quá hạn từng bước (knowledge/canh_bao.json → ticket_han_gio) -------------------------------------------------
+# Bản 9h ở trên chỉ bắt vài bước; ticket kẹt ở bước khác (đổi trong đơn, hoàn tiền, ĐVVC, nhập QLBH…) bị im.
+# nhac_tre(): mọi ticket đang dở nằm ở 1 bước quá số giờ cho phép → nhắc đúng nhóm phải làm (kho / đổi trả).
+# Gọi 10h/14h/18h từ cua_hang.py hen; 9h nhac() gộp thêm mục "Quá hạn ở bước khác".
+
+def han_buoc():
+    try:
+        c = json.load(open(os.path.join(ROOT, "knowledge", "canh_bao.json"), encoding="utf-8"))
+        return {k: v for k, v in (c.get("ticket_han_gio") or {}).items() if not k.startswith("_")}
+    except Exception as e:
+        print("ticket: không đọc được ticket_han_gio", e, flush=True)
+        return {}
+
+
+def vao_buoc(r):
+    """Lúc ticket vào bước hiện tại = dòng 'Lịch sử' cuối (dd/mm HH:MM, không có năm); không có → Ngày tạo."""
+    dong = [x for x in str(r.get("Lịch sử") or "").splitlines() if x.strip()]
+    if dong:
+        m = re.match(r"(\d{2})/(\d{2}) (\d{2}):(\d{2})", dong[-1].strip())
+        if m:
+            d, th, h, mi = (int(x) for x in m.groups())
+            n = datetime.now()
+            try:
+                t = datetime(n.year, th, d, h, mi)
+                return t if t <= n else datetime(n.year - 1, th, d, h, mi)   # qua năm mới
+            except ValueError:
+                pass
+    for f in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(str(r.get("Ngày tạo") or "")[:16 if "H" in f else 10], f)
+        except ValueError:
+            continue
+    return None
+
+
+def qua_han(rs=None):
+    """[(ticket, số giờ đã nằm ở bước, cấu hình bước)] — ticket đang dở quá hạn bước hiện tại."""
+    han = han_buoc()
+    out = []
+    for r in (all_rows() if rs is None else rs):
+        st = r.get("Trạng thái")
+        if not r.get("ID") or st in DONG or st not in han:
+            continue
+        t = vao_buoc(r)
+        if not t:
+            continue
+        gio = (datetime.now() - t).total_seconds() / 3600
+        if gio >= float(han[st].get("gio") or 24):
+            out.append((r, gio, han[st]))
+    return sorted(out, key=lambda x: -x[1])
+
+
+def _gio_txt(g):
+    return f"{int(g)} giờ" if g < 48 else f"{int(g // 24)} ngày"
+
+
+def dong_tre(r, g, cfg):
+    return (f"• <b>{esc(r['ID'])}</b> {esc(r.get('Loại'))} · đơn <code>{esc(r.get('Mã đơn') or '?')}</code> — "
+            f"<b>{esc(r.get('Trạng thái'))}</b> {_gio_txt(g)} (hạn {cfg.get('gio')}h) → {esc(cfg.get('viec') or '')}")
+
+
+def nhac_tre(send=False, im=False):
+    """Nhắc ticket quá hạn theo nhóm phải làm. Trả {chat: text}. im=True: không in (người gọi tự in + gửi)."""
+    nhom = {"kho": str(E.get("CHAT_ID") or ""), "doitra": tchat()}
+    gom = {}
+    for r, g, cfg in qua_han():
+        gom.setdefault(cfg.get("nhom") or "doitra", []).append(dong_tre(r, g, cfg))
+    out = {}
+    for k, ds in gom.items():
+        c = nhom.get(k) or tchat()
+        t = (f"⏳ <b>Ticket quá hạn — {'KHO làm' if k == 'kho' else 'CS làm'}</b> ({len(ds)})\n" + "\n".join(ds[:25])
+             + ("\n…" if len(ds) > 25 else "") + "\nXong bước nào bấm nút trên thẻ ticket (hoặc /xem mã).")
+        out[c] = (out.get(c, "") + "\n\n" + t).strip()
+    for c, t in out.items():
+        if not im:
+            print(re.sub(r"<[^>]+>", "", t))
+        if send and c:
+            tsend(c, t)
+    if not out and not im:
+        print("Không có ticket quá hạn")
+    return out
 
 
 def bao_cao_tuan(rs):
@@ -1773,5 +1881,7 @@ if __name__ == "__main__":
         setup(); print("Đã tạo/bổ sung bảng", TG.sname(BANG))
     elif a[0] == "nhac":
         nhac("--send" in a)
+    elif a[0] == "tre":   # ticket quá hạn từng bước (cua_hang.py hen gọi 10/14/18h)
+        nhac_tre("--send" in a)
     else:
         print(__doc__)
