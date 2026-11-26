@@ -47,7 +47,7 @@ Dòng nhiều dòng (dán mẫu): kết thúc dòng bằng \\ để nối dòng 
 import html, json, os, re, sys, time
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-SAN = os.path.join(ROOT, "logs", "san-thu")
+SAN = os.environ.get("SAN_THU_DIR") or os.path.join(ROOT, "logs", "san-thu")   # phong_thu.py dùng thư mục riêng
 DB = os.path.join(SAN, "sheet.json")
 os.makedirs(SAN, exist_ok=True)
 if "--reset" in sys.argv:
@@ -237,6 +237,19 @@ NH.MA_HOAN_F = os.path.join(SAN, "ma_hoan.json")   # sổ mã tem hoàn → đơ
 PHIEU_F = os.path.join(SAN, "phieu_nhap.json")   # phiếu nhập Nhanh giả (nhanh-phieu)
 kho_flow.phieu_nhap = lambda tu: [b for b in (json.load(open(PHIEU_F)) if os.path.exists(PHIEU_F) else []) if b["ngay"] >= tu]
 import hoan_san  # noqa: E402
+import tru_ton  # noqa: E402
+tru_ton.STATE_F = os.path.join(SAN, "tru_ton.json")
+tru_ton.BAT_F = os.path.join(SAN, "tru_ton_bat")
+tru_ton.xuat_nhanh = lambda kho, sp, gc: "THU-" + str(int(time.time()))   # không bao giờ ghi Nhanh thật
+tru_ton.dieu_chinh = lambda kho, lech, gc: "xuất THU-1"
+kho_flow.XUONG_F = os.path.join(SAN, "xuong.json")
+import chuyen_kho  # noqa: E402
+chuyen_kho.STATE_F = os.path.join(SAN, "chuyen_kho.json")
+CK_F = os.path.join(SAN, "ck_nhanh.json")   # phiếu chuyển kho giả (ck-xuat / ck-nhap)
+def _ck_doc(ngay=7):
+    d = json.load(open(CK_F)) if os.path.exists(CK_F) else {"x": {}, "n": {}}
+    return d["x"], d["n"]
+chuyen_kho.doc_nhanh = _ck_doc
 hoan_san.STATE = os.path.join(SAN, "hoan_san.json")
 hoan_san.LDH.SO = os.path.join(SAN, "hoan_ly_do.json")
 hoan_san.XU_LY = os.path.join(SAN, "hoan_xu_ly.json")
@@ -447,6 +460,29 @@ def dong(line):
                    "sp": {k: int(v) for k, v in (x.split(":") for x in ds.split(",") if ":" in x)}})
         json.dump(bs, open(PHIEU_F, "w"))
         return print(f"   (Nhanh: phiếu nhập {bid} {ds})")
+    if cmd in ("ck-xuat", "ck-nhap"):   # ck-xuat 343 Q2>PN SKU:SL,SKU:SL  |  ck-nhap 343 SKU:SL,...
+        w = rest.split()
+        d = json.load(open(CK_F)) if os.path.exists(CK_F) else {"x": {}, "n": {}}
+        ds = w[-1]
+        prods = [{"code": k, "quantity": int(v)} for k, v in (x.split(":") for x in ds.split(",") if ":" in x)]
+        if cmd == "ck-xuat":
+            tu, den = {"Q2": 205577, "PN": 206425}[w[1].split(">")[0]], {"Q2": 205577, "PN": 206425}[w[1].split(">")[1]]
+            d["x"][w[0]] = {"id": 900000 + int(w[0]), "date": time.strftime("%Y-%m-%d"), "depotId": tu, "related": {"depotId": den},
+                            "requirementBillId": int(w[0]), "created": {"name": "Thu Huyền", "createdAt": time.time()}, "products": prods}
+        else:
+            d["n"][w[0]] = {"id": 910000 + int(w[0]), "requirementBillId": int(w[0]),
+                            "created": {"name": "Kim Thi", "createdAt": time.time()}, "products": prods}
+        json.dump(d, open(CK_F, "w"))
+        return print(f"   (Nhanh: {cmd} #{w[0]} {ds})")
+    if cmd == "ck-quet":
+        return print("   " + chuyen_kho.quet(True))
+    if cmd == "ck-lui":   # lùi mốc thời gian thẻ chuyển kho (thử nhắc)
+        st = json.load(open(chuyen_kho.STATE_F))
+        for x in st.values():
+            x["tao"] -= 4 * 3600
+            if x.get("nhan"): x["nhan"]["ts"] -= 3600
+        json.dump(st, open(chuyen_kho.STATE_F, "w"))
+        return print("   (lùi 4 tiếng)")
     if cmd == "doichieu-nhap":
         return print(re.sub(r"<[^>]+>", "", kho_flow.doi_chieu_nhap(True)) and "" or "   (không có gì mới để báo)")
     if cmd == "gio10":

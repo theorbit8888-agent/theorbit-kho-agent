@@ -101,6 +101,7 @@ def _so(x):
 
 
 KHO_Q2 = "205577"   # KHO TỔNG - CN QUẬN 2 (206425 = KHO CỬA HÀNG - CN PHÚ NHUẬN)
+KHO_PN = "206425"
 
 
 def products():
@@ -120,9 +121,25 @@ def products():
                             "co_the_ban": _so(inv.get("available")), "dang_giao": _so(inv.get("shipping")),
                             "giu": _so(inv.get("holding")), "loi": _so(inv.get("damaged")),
                             "ton_tat_ca": _so(tong.get("remain")), "co_the_ban_tat_ca": _so(tong.get("available"))}
+        pn = next((d for d in tong.get("depots") or [] if str(d.get("id")) == KHO_PN), {})   # kho cửa hàng PN (NVBH kiểm)
+        r_pn = _so(pn.get("remain"))
+        prods[x["code"]]["trong_kho_pn"] = 0 if r_pn is None else r_pn - (_so(pn.get("shipping")) or 0)
         if x.get("combos"):   # combo CB-…: tồn tính theo SP con, bán combo = bán SP con
             prods[x["code"]]["combo"] = [{"ma": c.get("code"), "sl": _so(c.get("quantity")) or 1} for c in x["combos"] if c.get("code")]
     return prods
+
+
+def xuat_hom_nay(depot, ngay=None):
+    """Hàng ĐI khỏi 1 kho trong ngày (mọi phiếu XUẤT: bán lẻ, đơn online, xuất khác…) → {SKU: SL}. Chỉ đọc."""
+    ngay = ngay or datetime.now().strftime("%Y-%m-%d")
+    out = {}
+    for b in tat_ca("bill/list", {"fromDate": ngay, "toDate": ngay, "type": 2, "depotIds": [int(depot)]}, toi_da=30, sort=False):
+        if str(b.get("depotId") or depot) != str(depot):
+            continue
+        for p in b.get("products") or []:
+            if p.get("code"):
+                out[p["code"]] = out.get(p["code"], 0) + (_so(p.get("quantity")) or 0)
+    return out
 
 
 def phieu_nhap(tu, den=None):
@@ -143,14 +160,19 @@ def orders(ngay=14):
     tu = int((datetime.now() - timedelta(days=ngay)).timestamp())
     dons = {}
     for o in tat_ca("order/list", {"createdAtFrom": tu, "createdAtTo": int(time.time())}, toi_da=400, sort=False):
-        i, c, ch = o.get("info") or {}, o.get("carrier") or {}, o.get("channel") or {}
-        dons[str(i.get("id"))] = {
+        d = _don(o)
+        dons[d["id"]] = d
+    return dons
+
+
+def _don(o):
+    i, c, ch = o.get("info") or {}, o.get("carrier") or {}, o.get("channel") or {}
+    return {
             "id": str(i.get("id")), "kenh": KENH_ID.get(_so(ch.get("saleChannel")), "ngoai"),
             "ma_san": str(ch.get("appOrderId") or ""), "mvd": str(c.get("carrierCode") or ""), "dvvc": c.get("name") or "",
             "st": _so(i.get("status")), "st_ten": i.get("statusName") or TEN_ST.get(_so(i.get("status")), ""), "tao": _gio(i.get("createdAt")),
             "cap_nhat": _gio(i.get("updatedAt")), "gui_dvvc": _gio(c.get("sendCarrierAt")), "kho": str(i.get("depotId") or ""),
             "sp": [{"ma": p.get("code"), "sl": _so(p.get("quantity"))} for p in (o.get("products") or [])]}
-    return dons
 
 
 def nhap_tra(ngay=14):
@@ -162,14 +184,60 @@ def nhap_tra(ngay=14):
     for b in tat_ca("bill/list", {"fromDate": tu, "toDate": datetime.now().strftime("%Y-%m-%d"), "type": 1, "modes": [1]},
                     toi_da=60, sort=False):
         cr = b.get("created") or {}
-        v = {"bill": str(b.get("id")), "luc": _gio(cr.get("createdAt")), "nguoi": str(cr.get("name") or "")}
+        v = {"bill": str(b.get("id")), "luc": _gio(cr.get("createdAt")), "nguoi": str(cr.get("name") or ""),
+             "kho": str(b.get("depotId") or ""),   # trừ tồn hàng hoàn lỗi (tru_ton.py) cần kho + SP Nhanh đã cộng lại
+             "sp": [[p.get("code"), _so(p.get("quantity")) or 0, p.get("id")] for p in b.get("products") or [] if p.get("code")]}
         g = re.search(r"Trả từ đơn:\s*(\d+)", str(b.get("description") or ""))
         for k in ([g.group(1)] if g else []) + ([str(b.get("orderId"))] if b.get("orderId") else []):
             out[k] = v
     return out
 
 
+class Khoa:
+    """Khoá file: đọc đủ (30 phút) và đọc nhanh (3 phút) không ghi đè cache của nhau."""
+    def __init__(self, cho=True):
+        self.cho = cho
+
+    def __enter__(self):
+        import fcntl
+        import nhanh as NH
+        os.makedirs(NH.CACHE, exist_ok=True)
+        self.f = open(os.path.join(NH.CACHE, ".khoa"), "w")
+        try:
+            fcntl.flock(self.f, fcntl.LOCK_EX | (0 if self.cho else fcntl.LOCK_NB))
+            return True
+        except BlockingIOError:
+            return False
+
+    def __exit__(self, *a):
+        self.f.close()
+
+
+def sync_nhanh(phut=8):
+    """Đọc NHANH 3 phút/lần: tồn mọi SKU (2 kho) + đơn vừa tạo/đổi trạng thái trong `phut` phút → gộp vào cache.
+    Phần nặng (đơn 14 ngày, nhập trả, ghi Sheet, đối chiếu) vẫn ở sync() 30 phút/lần. Đang có lượt khác chạy → bỏ qua."""
+    import nhanh as NH
+    with Khoa(cho=False) as ok:
+        if not ok:
+            return "đang có lượt đọc khác — bỏ qua"
+        prods = products()
+        now_ = int(time.time())
+        moi = [_don(o) for o in tat_ca("order/list", {"updatedAtFrom": now_ - phut * 60, "updatedAtTo": now_}, toi_da=40, sort=False)]
+        dons = NH.orders() or {}
+        for d in moi:
+            dons[d["id"]] = d
+        m = NH.meta() or {}
+        m.update(dong_bo=datetime.now().strftime("%Y-%m-%d %H:%M"), so_sp=len(prods), so_don=len(dons), loi="", nguon="api")
+        NH._ghi("products.json", prods); NH._ghi("orders.json", dons); NH._ghi("meta.json", m)
+        return f"{m['dong_bo']} · {len(prods)} SKU · {len(moi)} đơn mới/đổi"
+
+
 def sync(ngay=14):
+    with Khoa():
+        return _sync(ngay)
+
+
+def _sync(ngay=14):
     import nhanh as NH
     prods, dons = products(), orders(ngay)
     try:

@@ -111,12 +111,34 @@ cat > "$CHJ" <<EOF
     <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
     <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>50</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>50</integer></dict>
+    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>20</integer></dict>
     <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>22</integer><key>Minute</key><integer>5</integer></dict>
   </array>
   <key>StandardOutPath</key><string>$DIR/logs/cuahang.out</string>
   <key>StandardErrorPath</key><string>$DIR/logs/cuahang.out</string>
 </dict></plist>
 EOF
+# Đọc NHANH 3 phút/lần (7h–23h, chủ shop 21/11): tồn 2 kho + đơn vừa đổi + báo đơn huỷ sau in. Python thuần, không gọi Claude.
+NHN=~/Library/LaunchAgents/vn.theorbit.kho-agent.nhanh3p.plist
+cat > "$NHN" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>vn.theorbit.kho-agent.nhanh3p</string>
+  <key>ProgramArguments</key><array>
+    <string>$DIR/.venv/bin/python</string><string>$DIR/tools/nhanh.py</string><string>sync</string><string>--nhanh</string>
+  </array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>StartInterval</key><integer>180</integer>
+  <key>StandardOutPath</key><string>$DIR/logs/nhanh-3p.out</string>
+  <key>StandardErrorPath</key><string>$DIR/logs/nhanh-3p.out</string>
+</dict></plist>
+EOF
+if grep -q "NHANH_ACCESS_TOKEN=." ~/.config/orbit-kho/nhanh_api.env 2>/dev/null; then
+  launchctl unload "$NHN" 2>/dev/null || true; launchctl load "$NHN"
+fi
 # job đọc Nhanh ($NH) chỉ bật sau khi đăng nhập Nhanh (nhanh.py login tự bật)
 for p in "$PLIST" "$NHAC" "$TK" "$KF" "$CHJ"; do launchctl unload "$p" 2>/dev/null || true; launchctl load "$p"; done
 echo "Đã bật listener + cảnh báo 9h + ticket 9:05 + việc kho 9:02/10:15/12:00 đối soát shipper/17:00/17:30 kiểm kho/18:00. Log: $DIR/logs/listener.out, nhac.out, ticket-nhac.out, flow.out"

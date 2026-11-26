@@ -450,11 +450,11 @@ def nut(tems):
              {"text": f"⚠️ Khiếu nại {t[-6:]}", "callback_data": f"hs:k:{t}"[:64]}] for t in tems[:8]]
 
 
-def gui_doi_chieu(chat, mas, reply_to=None):
-    """Gọi sau /hoan (ticket.cmd_hoan): báo nhóm Kho kết quả đối chiếu sàn từng tem."""
+def ghi_doi_chieu(chat, mas):
+    """Đối chiếu sàn từng tem + ghi giờ kho quét + sổ chờ sàn (chưa thấy trên sàn). Không gửi tin. → [(tem, kq)]"""
     kq = [(t, doi_chieu(t)) for t in mas]
     if not kq:
-        return
+        return kq
     kl, bg = _doc(KHO_LUC), datetime.now().strftime("%Y-%m-%d %H:%M")
     for t in mas:
         kl.setdefault(t, bg)
@@ -464,6 +464,14 @@ def gui_doi_chieu(chat, mas, reply_to=None):
         if k["kq"] == "chua":
             cho.setdefault(t, {"chat": str(chat), "luc": datetime.now().strftime("%Y-%m-%d %H:%M"), "lan": 0})
     _ghi(CHO, cho)
+    return kq
+
+
+def gui_doi_chieu(chat, mas, reply_to=None):
+    """Gọi sau /hoan nhiều kiện (ticket.cmd_hoan): báo nhóm Kho kết quả đối chiếu sàn từng tem."""
+    kq = ghi_doi_chieu(chat, mas)
+    if not kq:
+        return
     co_nut = [t for t, k in kq if k["kq"] in ("khop", "lech")]
     text = (f"🔎 <b>ĐỐI CHIẾU SÀN</b> (đọc sàn {esc(luc_doc_san()[5:] or 'chưa có')})\n" + "\n".join(k["dong"] for _, k in kq)
             + ("\n" + HD_SAN if co_nut else ""))
@@ -493,6 +501,25 @@ def kiem_lai_cho(send=False):
     return text
 
 
+def danh_dau(tem, xl, who, ma=""):
+    """Ghi tem đã xử lý trên sàn (d = duyệt, k = khiếu nại) + ghi chú bảng 09 → tắt nhắc. Dùng chung cho nút ở thẻ ticket."""
+    if not tem:
+        return
+    luc = datetime.now().strftime("%Y-%m-%d %H:%M")
+    d = xu_ly()
+    if d.get(tem, {}).get("xl") == xl:
+        return
+    d[tem] = {"xl": xl, "xl_ten": TEN_XL.get(xl, xl), "who": who, "luc": luc, "ma": ma}
+    _ghi(XU_LY, d)
+    for r in TG.rows(TK.HOAN, fresh=True):
+        if str(r.get("MVĐ", "")).lower() == tem.lower():
+            g = str(r.get("Ghi chú") or "")
+            TG.kho("update", table=TG.sname(TK.HOAN), id=r["_id"],
+                   fields={"Ghi chú": (g + " · " if g else "") + f"Sàn: kho {xl_txt(xl)} {luc[5:]} {who}"})
+            TG._CACHE.pop(TG.sname(TK.HOAN), None)
+            break
+
+
 def on_cb(cq, p):
     """hs:d:<tem> / hs:k:<tem> — kho báo đã bấm duyệt / khiếu nại trên sàn."""
     u = cq["from"]
@@ -515,6 +542,17 @@ def on_cb(cq, p):
                 break
     except Exception as e:
         print("hoan_san: ghi 09 lỗi", e, flush=True)
+    try:   # đồng bộ ticket kiện hoàn xấu (HHV) cùng tem → không phải bấm 2 nơi
+        for r in TK.find(tem, open_only=True):
+            if TK.TEN_LOAI.get(r.get("Loại")) == "hoan" and r.get("Trạng thái") == "Chờ khiếu nại sàn":
+                if xl == "k":
+                    TK.upd(r, {"Trạng thái": "Chờ sàn trả lời"}, "đã khiếu nại trên sàn (nút đối chiếu)", who)
+                else:
+                    TK.upd(r, {"Trạng thái": "Đóng", "Ngày đóng": TK.today(),
+                               "Duyệt": f"Kết quả: đã duyệt hoàn trên sàn ({who} {luc[5:]})"}, "đã duyệt hoàn trên sàn", who)
+                TK.refresh(r)
+    except Exception as e:
+        print("hoan_san: đồng bộ HHV lỗi", e, flush=True)
     TK.answer(cq, TEN_XL.get(xl, xl))
     msg = cq["message"]
     kb = [row for row in ((msg.get("reply_markup") or {}).get("inline_keyboard") or [])

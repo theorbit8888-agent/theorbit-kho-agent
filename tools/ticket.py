@@ -67,9 +67,10 @@ LOAI = {  # mã: (tiền tố, tên, ô trong mẫu (* = bắt buộc), trạng 
     "tra": ("THT", "Trả hàng hoàn tiền", ["ma*", "ten*", "sdt*", "sku_cu*", "tien*", "stk", "ghi"], "Chờ duyệt"),
     "doihoan": ("DHH", "Đòi hàng hoàn", ["ma*", "mvd", "ghi"], "Chờ đòi ĐVVC"),
     "suco": ("SCG", "Sự cố giao hàng", ["ma*", "mvd", "ghi"], "Chờ khiếu nại ĐVVC"),
-    "hoan": ("HHV", "Hàng hoàn về (chưa rõ ticket)", [], "Chờ CS gắn đơn"),
+    "hoan": ("HHV", "Hàng hoàn lỗi/tráo/thiếu", [], "Chờ khiếu nại sàn"),
 }
 TEN_LOAI = {v[1]: k for k, v in LOAI.items()}
+TEN_LOAI["Hàng hoàn về (chưa rõ ticket)"] = "hoan"   # tên cũ trước 19/11
 BTN = {
     "Chờ gọi KH": [("📦 Đã gọi + tạo đơn đi (gõ MVĐ)", "don_di"), ("📵 Chưa nghe máy", "goi_ko"),
                    ("🗑 KH huỷ đổi", "huy")],
@@ -82,7 +83,10 @@ BTN = {
     "Chờ đòi ĐVVC": [("📣 Đã đòi ĐVVC", "doi_dvvc"), ("📥 Kho nhận hàng hoàn", "nhan")],
     "Chờ khiếu nại ĐVVC": [("📣 Đã khiếu nại ĐVVC", "kn")],
     "Chờ ĐVVC trả lời": [("✅ Đã giải quyết", "xl_ok"), ("💸 ĐVVC đền tiền", "den")],
-    "Chờ CS gắn đơn": [("🔗 Gắn mã đơn / ticket", "gan"), ("✅ Đã nhập kho QLBH", "nhap")],
+    "Chờ CS gắn đơn": [("🔗 Gắn mã đơn", "gan")],   # kiện hoàn xấu mà Nhanh không ra đơn
+    # kiện hoàn lỗi/tráo/thiếu (chủ shop 14/11: KHO khiếu nại trên sàn; 19/11: 1 kiện = 1 ticket, 2 bước là xong)
+    "Chờ khiếu nại sàn": [("⚠️ Đã khiếu nại trên sàn", "kn_san"), ("✅ Không khiếu nại (đã duyệt hoàn)", "bo_kn")],
+    "Chờ sàn trả lời": [("✅ Sàn chấp nhận / đền", "san_ok"), ("❌ Sàn từ chối", "san_ko")],
 }
 TINH_TRANG = ["✅ Nguyên vẹn", "⚠️ Không nguyên vẹn (lỗi/bẩn)", "🔀 Bị tráo hàng", "➖ Thiếu hàng"]
 XAU = TINH_TRANG[1:]
@@ -265,7 +269,64 @@ def upd(r, fields, log=None, who=""):
     TG.kho("update", table=TG.sname(BANG), id=r["_id"], fields=fields)
     TG._CACHE.pop(TG.sname(BANG), None)
     r.update(fields)
+    if r.get("Loại") in DOI_LOAI and ({"Trạng thái", "MVĐ đi", "SKU đổi sang", "Mã đơn"} & set(fields)):
+        so_doi_nen(r)
     return r
+
+
+# ---- sổ đơn đổi/trả chung (chủ shop 18/11): ticket /tk đổi/trả cũng ghi vào bảng "SP DD · ĐƠN ĐỔI"
+# (cùng bảng agent CSKH ghi bằng so_sheet.py add) → 1 nơi theo dõi mọi đơn đổi/trả, link đã ghim trong các nhóm.
+DOI_BANG = "DD · ĐƠN ĐỔI"
+DOI_LOAI = {"Đổi hàng sau giao": "Đổi", "Đổi trước khi giao": "Đổi", "Trả hàng hoàn tiền": "Trả"}
+TEN_K = {"TikTok": "TikTok", "Shopee": "Shopee", "Website": "Web", "Facebook": "Meta", "Khác": "Khác"}
+
+
+def so_doi(r):
+    loai = DOI_LOAI.get(r.get("Loại"))
+    if not loai:
+        return None
+    ma = str(r.get("Mã đơn") or "").strip()
+    nhanh_id = re.fullmatch(r"\d{8,10}", ma) is not None
+    sdt_re = re.compile(r"(?<!\d)(0|\+?84)\d{8,10}(?!\d)")
+    ly = re.sub(sdt_re, "[SĐT]", " · ".join(x for x in (r.get("Lý do"), r.get("Chi tiết")) if x))
+    phi = tien(r.get("Phí ship KH trả")) + tien(r.get("Chênh giá KH trả thêm"))
+    f = {"Ngày": str(r.get("Ngày tạo") or "")[:10] or datetime.now().strftime("%Y-%m-%d"), "Loại": loai,
+         "Kênh": TEN_K.get(r.get("Kênh"), r.get("Kênh") or ""),
+         "Mã đơn sàn": "" if nhanh_id else ma, "Mã đơn Nhanh": ma if nhanh_id else "",
+         "MVĐ J&T": r.get("MVĐ đi") or "", "SKU cũ": str(r.get("SKU khách đang cầm") or "").upper(),
+         "SKU mới": str(r.get("SKU đổi sang") or "").upper(), "Phí đổi": phi if phi else "", "Lý do": ly,
+         "Tên KH": r.get("Tên KH") or "", "SĐT KH": r.get("SĐT KH") or "", "Địa chỉ KH": r.get("Địa chỉ KH") or "",
+         "Người ghi": f"{r.get('Người tạo') or ''} (bot /tk)",
+         "Ghi lúc": datetime.now().strftime("%Y-%m-%d %H:%M"),
+         "Ghi chú": f"Ticket {r.get('ID')} · {r.get('Trạng thái') or ''} ({r.get('Loại')})"}
+    f = {k: v for k, v in f.items() if v not in ("", None)}
+    rs = TG.rows(DOI_BANG, fresh=True)
+    cu = next((x for x in rs if f"Ticket {r.get('ID')} " in str(x.get("Ghi chú") or "")), None)
+    if not cu and ma:   # agent CSKH đã ghi đơn này rồi → gộp vào dòng đó, không tạo trùng
+        cu = next((x for x in rs if ma.lower().lstrip("#") in (str(x.get("Mã đơn sàn") or "").lower().lstrip("#"),
+                                                             str(x.get("Mã đơn Nhanh") or "").lower())
+                   and x.get("Loại", "Đổi") == loai and "Ticket " not in str(x.get("Ghi chú") or "")), None)
+    if cu:
+        if "Ticket " not in str(cu.get("Ghi chú") or "") and cu.get("Ghi chú"):
+            f["Ghi chú"] = f"{cu.get('Ghi chú')} · {f['Ghi chú']}"
+        for k in ("Ngày", "Người ghi"):
+            if cu.get(k):
+                f.pop(k, None)
+        for k in list(f):   # không đè dữ liệu agent đã ghi bằng ô trống/khác kiểu
+            if k in ("SKU cũ", "SKU mới", "Tên KH", "SĐT KH", "Địa chỉ KH", "Mã đơn Nhanh", "Mã đơn sàn") and cu.get(k):
+                f.pop(k)
+        TG.kho("update", table=TG.sname(DOI_BANG), id=cu["_id"], fields=f)
+        return cu["_id"]
+    return TG.kho("add", table=TG.sname(DOI_BANG), rows=[f])[0]
+
+
+def so_doi_nen(r):
+    def chay():
+        try:
+            so_doi(dict(r))
+        except BaseException as e:
+            print("ticket: ghi sổ đơn đổi lỗi", repr(e)[:200], flush=True)
+    threading.Thread(target=chay, daemon=True).start()
 
 
 def now():
@@ -490,8 +551,100 @@ def mau(loai):
                      for k in LOAI[loai][2])
 
 
+# ---- /tk <mã đơn>: bot tra Nhanh → gợi ý loại theo trạng thái đơn + điền sẵn khách/SKU (chủ shop 18/11: luồng cũ rườm rà)
+ST_TRUOC = ("Đơn mới", "Đã xác nhận", "Đang đóng gói", "Chờ khách xác nhận", "Chờ lấy hàng", "Đóng gói xong", "Chờ thu gom")
+ST_HOAN = ("Đã chuyển hoàn", "Xác nhận hoàn", "Đang chuyển hoàn", "Chuyển hoàn")
+PRE = {}      # mã -> thông tin đơn đã tra (để nút bấm không tra lại)
+CHO_MA = {}   # uid -> lúc: đang chờ người gõ mã đơn sau /tk
+
+
+def thong_tin_don(ma):
+    ma = str(ma).strip()
+    if ma in PRE and time.time() - PRE[ma]["luc"] < 1800:
+        return PRE[ma]
+    o, sp = sp_don(ma)
+    if not o:
+        return None
+    i = {"o": o, "sp": sp, "luc": time.time(), "ten": "", "sdt": "", "dc": ""}
+    try:
+        import nhanh_api as NA
+        d = NA.goi("order/list", {"filters": {"ids": [int(o["id"])]}, "paginator": {"size": 1}}).get("data") or []
+        a = (d[0].get("shippingAddress") or {}) if d else {}
+        sach = lambda x: "" if "*" in str(x or "") else str(x or "")   # sàn che (B** Q***g) → bỏ, hỏi người tạo
+        i.update(ten=sach(a.get("name")), sdt=sach(a.get("mobile")), dc=sach(a.get("address")))
+    except Exception as e:
+        print("ticket: tra khách Nhanh lỗi", repr(e)[:150], flush=True)
+    PRE[ma] = i
+    return i
+
+
+def goi_y(o):
+    st = o.get("st_ten") or ""
+    if o.get("tra_sau_giao"):
+        return ["tra", "doi"]
+    if st in ST_HOAN:
+        return ["doihoan"]
+    if st == "Thành công":
+        return ["doi", "tra", "suco"]
+    if st == "Đang chuyển":
+        return ["suco", "doihoan"]
+    if st in ST_TRUOC or not st:
+        return ["doitruoc"]
+    return [k for k in LOAI if k != "hoan"]
+
+
+def tu_dong(uid, chat, ma, by):
+    ma = ma.strip().split()[0][:40]
+    CHO_MA.pop(uid, None)
+    tsend(chat, f"🔎 Đang tra đơn <code>{esc(ma)}</code> trên Nhanh…")
+    i = thong_tin_don(ma)
+    if not i:
+        b = [[{"text": LOAI[k][1], "callback_data": f"tk:mm:{k}:{ma}"}] for k in LOAI if k != "hoan"]
+        return tsend(chat, f"⚠️ Không thấy đơn <code>{esc(ma)}</code> trên Nhanh (đơn quá 14 ngày hoặc sai mã). "
+                           "Chọn loại, bot mở mẫu có sẵn mã đơn:", b)
+    o = i["o"]
+    gy = goi_y(o)
+    import nhanh as NH
+    t = (f"📦 Đơn {esc(NH.TEN_KENH.get(o['kenh'], o['kenh']))} <code>{esc(o.get('ma_san') or o['id'])}</code> · "
+         f"<b>{esc(o.get('st_ten'))}</b>\nSP: {esc(i['sp'].split(' ‖ ')[0])}"
+         + (f"\nKhách: {esc(i['ten'])}" + (f" · SĐT …{esc(i['sdt'][-3:])}" if i["sdt"] else "") if i["ten"] else "")
+         + f"\n\n👉 Bot gợi ý: <b>{esc(LOAI[gy[0]][1])}</b>. Bấm 1 nút — bot điền sẵn mã đơn, kênh, khách, SKU; "
+           "bạn chỉ trả lời phần còn thiếu.")
+    b = [[{"text": ("⭐ " if k == gy[0] else "") + LOAI[k][1], "callback_data": f"tk:mm:{k}:{ma}"}] for k in gy]
+    khac = [k for k in LOAI if k not in gy and k != "hoan"]
+    if khac:
+        b.append([{"text": "Loại khác…", "callback_data": f"tk:mk:{ma}"}])
+    tsend(chat, t, b)
+
+
+def dien_san(w, ma):
+    i = thong_tin_don(ma)
+    if not i:
+        return False
+    o_ = i["o"]
+    keys = [o(k) for k in LOAI[w["loai"]][2]]
+    w["d"]["Mã đơn"] = o_.get("ma_san") or o_["id"]
+    w["doan"] = {"tiktok": "TikTok", "shopee": "Shopee"}.get(o_.get("kenh")) or doan_kenh(w["d"]["Mã đơn"])
+    if "ten" in keys and i["ten"]:
+        w["d"]["Tên KH"] = i["ten"]
+    if "sdt" in keys and i["sdt"] and dat(w, "sdt", i["sdt"]):
+        w["d"].pop("SĐT KH", None)   # SĐT sàn bị che → hỏi
+    if "dc" in keys and i["dc"]:
+        w["d"]["Địa chỉ KH"] = i["dc"]
+    w["sp_list"] = [x["ma"] for x in o_.get("sp") or [] if x.get("ma")]
+    if len(w["sp_list"]) == 1 and ("sku" in keys or "sku_cu" in keys):
+        w["d"]["SKU khách đang cầm"] = w["sp_list"][0]
+    w["form"] = True
+    return True
+
+
 def wiz_start(uid, chat, loai, by, ma=""):
-    WIZ[uid] = {"loai": loai, "d": {}, "anh": [], "chat": chat, "by": by}
+    WIZ[uid] = {"loai": loai, "d": {}, "anh": [], "chat": chat, "by": by, "ma0": ma}
+    if ma and dien_san(WIZ[uid], ma):
+        w = WIZ[uid]
+        co = [f"{c}: {esc(str(w['d'][c])[:60])}" for c in ("Mã đơn", "Tên KH", "Địa chỉ KH", "SKU khách đang cầm") if w["d"].get(c)]
+        tsend(chat, f"🎫 <b>{LOAI[loai][1]}</b> — bot đã điền sẵn:\n" + "\n".join(co) + "\n(/huy để dừng)")
+        return ask(uid)
     _save()
     tsend(chat, f"🎫 <b>{LOAI[loai][1]}</b>\nBấm vào mẫu dưới để chép, điền rồi gửi lại <b>1 tin</b> "
                 "(không cần đủ ô không bắt buộc; /huy để dừng):")
@@ -634,6 +787,14 @@ def ask(uid):
         return tsend(w["chat"], "📷 Gửi ảnh (lỗi / tag / kiện), xong bấm ✅.",
                      [[{"text": "✅ Xong ảnh", "callback_data": "tk:w:anh:xong"},
                        {"text": "Không có ảnh", "callback_data": "tk:w:anh:bo"}]])
+    if b in ("sku", "sku_cu") and w.get("sp_list"):
+        ds = ", ".join(w["sp_list"][:8])
+        if b == "sku" and w["d"].get("SKU khách đang cầm"):
+            return tsend(w["chat"], f"Đổi <b>{esc(w['d']['SKU khách đang cầm'])}</b> sang size/mẫu nào? "
+                                    "(gõ size VD <code>L</code>, hoặc SKU mới đầy đủ)")
+        if b == "sku":
+            return tsend(w["chat"], f"Đơn có: {esc(ds)}\nKhách đổi món nào sang gì? (VD <code>{esc(w['sp_list'][0])} → L</code>)")
+        return tsend(w["chat"], f"Đơn có: {esc(ds)}\nKhách trả món nào? (gõ SKU)")
     tsend(w["chat"], F[b][4])
 
 
@@ -645,6 +806,8 @@ def wiz_text(uid, text):
         if loi:
             tsend(w["chat"], "⚠️ " + "\n⚠️ ".join(esc(x) for x in loi))
         return ask(uid)
+    if b == "sku" and w["d"].get("SKU khách đang cầm") and not re.search(r"→|->|=>|>|sang", text):
+        text = f"{w['d']['SKU khách đang cầm']} → {text.strip()}"
     if b in F:
         e = dat(w, b, text)
         if e:
@@ -685,7 +848,7 @@ def wiz_choice(uid, key, val, by=None):
             return tsend(w["chat"], "Phiếu đã làm lại / chưa đủ thông tin — điền tiếp phiếu mới nhé.")
         return create(uid)
     if val == "lam_lai":
-        return wiz_start(uid, w["chat"], w["loai"], w["by"])
+        return wiz_start(uid, w["chat"], w["loai"], w["by"], w.get("ma0", ""))
     if key == "trung":
         w["trung_ok"] = True
         return ask(uid)
@@ -760,6 +923,8 @@ def create(uid):
         except BaseException as e:
             print("ticket: ảnh xem lỗi", e, flush=True)
     refresh(row)
+    if name in DOI_LOAI:
+        so_doi_nen(row)
     tsend(w["chat"], f"✅ Đã tạo <b>{tid}</b>" + (" và báo nhóm Đổi trả." if tchat() else
                                                  " (chưa có nhóm Đổi trả: TICKET_CHAT_ID trống)."))
     if loai == "doi":
@@ -899,9 +1064,52 @@ def act(cq, tid, a):
         upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today()}, v, who)
     elif a == "kn":
         upd(r, {"Trạng thái": "Chờ ĐVVC trả lời"}, "đã khiếu nại ĐVVC", who)
+    elif a == "kn_san":
+        upd(r, {"Trạng thái": "Chờ sàn trả lời"}, "đã khiếu nại trên sàn", who)
+        _san_xl(r, "k", who)
+    elif a in ("bo_kn", "san_ok", "san_ko"):
+        v = {"bo_kn": "không khiếu nại (đã duyệt hoàn trên sàn)", "san_ok": "sàn chấp nhận / đền",
+             "san_ko": "sàn từ chối khiếu nại"}[a]
+        upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today(), "Duyệt": f"Kết quả: {v} ({who} {now()})"}, v, who)
+        if a == "bo_kn":
+            _san_xl(r, "d", who)
     elif a == "gan":
         return prompt(chat, mid, tid, "gan", u, f"🔗 {esc(who)} trả lời tin này: <b>mã đơn</b> hoặc <b>ID ticket</b>")
     refresh(r)
+    if str(r.get("Thẻ tin") or "") != f"tg:{chat}:{mid}":   # bấm ở tin nhóm Kho, không phải thẻ
+        tedit(chat, mid, esc(cq["message"].get("text", "")) + f"\n\n✔️ {esc(who)}: {esc(r.get('Trạng thái'))}", btns(r))
+
+
+def _doi_chieu_1(chat, ma):
+    """1 kiện: ghi sổ đối chiếu sàn (giờ kho quét, chờ sàn) và trả 1 dòng để gộp vào tin hỏi tình trạng → kho chỉ thấy 1 tin."""
+    try:
+        import hoan_san
+        k = hoan_san.ghi_doi_chieu(chat, [ma])[0][1]
+        return k, "\n" + k["dong"].lstrip("• ")
+    except Exception as e:
+        print("ticket: đối chiếu sàn lỗi", repr(e)[:200], flush=True)
+        return {}, ""
+
+
+def _nut_san_dung(tem):
+    """Kiện nguyên vẹn mà sàn có yêu cầu trả hàng → nhắc bấm đồng ý hoàn trên sàn + 1 nút xác nhận."""
+    try:
+        import hoan_san
+        if hoan_san.doi_chieu(tem).get("kq") in ("khop", "lech"):
+            return ("\n→ Vào sàn bấm <b>đồng ý hoàn / xác nhận nhận hàng</b>, xong bấm nút dưới.",
+                    [[{"text": "✅ Đã duyệt hoàn trên sàn", "callback_data": f"hs:d:{tem}"[:64]}]])
+    except Exception as e:
+        print("ticket: đối chiếu sàn lỗi", repr(e)[:200], flush=True)
+    return "", None
+
+
+def _san_xl(r, xl, who):
+    """Đồng bộ ngược sang sổ đối chiếu sàn (hoan_san): kho bấm trên thẻ = đã bấm trên sàn → tắt nhắc nhóm Kho."""
+    try:
+        import hoan_san
+        hoan_san.danh_dau(str(r.get("MVĐ hoàn về") or ""), xl, who, str(r.get("Mã đơn") or ""))
+    except Exception as e:
+        print("ticket: đồng bộ hoan_san lỗi", e, flush=True)
 
 
 def tinh_trang(cq, tid, k):
@@ -915,7 +1123,8 @@ def tinh_trang(cq, tid, k):
     v = TINH_TRANG[int(k)]
     answer(cq, v)
     chat, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
-    tedit(chat, mid, f"📥 {esc(tid)}: {esc(v)} — {esc(who)}")
+    t, b = _nut_san_dung(str(r.get("MVĐ hoàn về") or "")) if v not in XAU else ("", None)
+    tedit(chat, mid, f"📥 {esc(tid)}: {esc(v)} — {esc(who)}" + t, b)
     nhan_hoan(r, v, who)
     if v in XAU:
         hoi_lech(chat, mid, tid, u, v)
@@ -924,7 +1133,7 @@ def tinh_trang(cq, tid, k):
 def nhan_hoan(r, v, who):
     loai = TEN_LOAI.get(r.get("Loại"), "")
     nxt = {"doi": "Chờ nhập kho QLBH", "tra": "Chờ hoàn tiền", "doihoan": "Chờ nhập kho QLBH",
-           "hoan": "Chờ CS gắn đơn"}.get(loai, r.get("Trạng thái"))
+           }.get(loai, r.get("Trạng thái"))
     f = {"Tình trạng hàng hoàn": v, "Ngày hàng hoàn về": today(), "Người nhận hoàn": who, "Trạng thái": nxt}
     if v in XAU:
         f["Cần duyệt"] = "✓"
@@ -1014,8 +1223,8 @@ def on_prompt_reply(m, p):
             upd(r, {"Trạng thái": "Đóng", "Ngày đóng": today(), "Mã đơn": g.get("Mã đơn")}, f"gắn vào {g['ID']}", who)
             refresh(r)
         else:
-            upd(r, {"Mã đơn": t}, f"gắn mã đơn {t}", who)
-            refresh(r, f"🔗 Gắn mã đơn {esc(t)} (chưa có ticket nào với mã này). Nhập kho xong bấm ✅.", True)
+            upd(r, {"Mã đơn": t, "Trạng thái": "Chờ khiếu nại sàn"}, f"gắn mã đơn {t}", who)
+            refresh(r, f"🔗 Gắn mã đơn {esc(t)} → kho khiếu nại trên sàn, xong bấm nút trên thẻ.", True)
 
 
 # ======================= lệnh =======================
@@ -1102,6 +1311,10 @@ def cmd_hoan(m, arg):
         rs = find(ma, open_only=True)
         if rs:
             r = rs[0]
+            m["_doi_chieu"] = True
+            if TEN_LOAI.get(r.get("Loại")) == "hoan":
+                return tsend(chat, f"♻️ Kiện này đã có ticket <b>{esc(r['ID'])}</b>, không mở thêm.\n\n" + card(r), btns(r),
+                             reply_to=m["message_id"])
             if fid:
                 old = str(r.get("Ảnh hàng hoàn") or "")
                 upd(r, {"Ảnh hàng hoàn": (old + ", " if old else "") + "tg:" + fid}, "ảnh hàng hoàn", who)
@@ -1112,14 +1325,17 @@ def cmd_hoan(m, arg):
                         print("ticket: ảnh xem lỗi", e, flush=True)
             b = [[{"text": t, "callback_data": f"tk:t:{r['ID']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
             dn = don_nhanh(ma)
-            return tsend(chat, card(r) + (f"\n{dn}" if dn else "") + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b,
-                         reply_to=m["message_id"])
+            _, dc = _doi_chieu_1(chat, ma)
+            return tsend(chat, card(r) + (f"\n{dn}" if dn else "") + (f"\n🔎 Sàn: {dc.strip()}" if dc else "")
+                         + "\n\n📥 Hàng hoàn về tình trạng thế nào?", b, reply_to=m["message_id"])
+        m["_doi_chieu"] = True
         row = log_hoan(ma, who, fid=fid)
         b = [[{"text": t, "callback_data": f"tk:h:{row['_id']}:{k}"}] for k, t in enumerate(TINH_TRANG)]
         dn = don_nhanh(ma)
+        _, dc = _doi_chieu_1(chat, ma)
         return tsend(chat, f"📥 Đã ghi kiện hoàn <code>{esc(ma)}</code> (không thuộc ticket CS nào)."
-                           + (f"\n{dn}" if dn else "\n(Nhanh chưa thấy mã này)") + "\nMở kiện kiểm, tình trạng?", b,
-                     reply_to=m["message_id"])
+                           + (f"\n{dn}" if dn else "\n(Nhanh chưa thấy mã này)") + (f"\n🔎 Sàn: {dc.strip()}" if dc else "")
+                           + "\n\nMở kiện kiểm, tình trạng?", b, reply_to=m["message_id"])
     co_tk, le, ds = [], 0, []
     for ma in mas:
         rs = find(ma, open_only=True)
@@ -1151,27 +1367,47 @@ def hoan_le(cq, rid, k):
     r9 = next((r for r in TG.rows(HOAN, fresh=True) if r["_id"] == rid), {})
     chat, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
     if v not in XAU:
-        return tedit(chat, mid, f"📥 <code>{esc(r9.get('MVĐ'))}</code>: {esc(v)} — {esc(who)}")
+        t, b = _nut_san_dung(str(r9.get("MVĐ", "")))
+        return tedit(chat, mid, f"📥 <code>{esc(r9.get('MVĐ'))}</code>: {esc(v)} — {esc(who)}" + t, b)
+    # 1 kiện = 1 ticket: kiện này đã có ticket (bấm lại / quét lại) → dùng ticket cũ, không mở thêm
+    mvd = str(r9.get("MVĐ", "")).strip()
+    cu = get(r9.get("Ticket")) if r9.get("Ticket") else None
+    cu = cu or next((x for x in find(mvd, open_only=True) if TEN_LOAI.get(x.get("Loại")) == "hoan"), None) if mvd else cu
+    if cu:
+        if cu.get("Tình trạng hàng hoàn") != v:
+            upd(cu, {"Tình trạng hàng hoàn": v}, f"kho sửa tình trạng: {v}", who)
+            refresh(cu)
+        tedit(chat, mid, f"📥 <code>{esc(mvd)}</code>: {esc(v)} — {esc(who)} → ticket <b>{esc(cu['ID'])}</b> (đã có, không mở thêm)"
+              f" · ➡️ {esc(cu.get('Trạng thái'))}", btns(cu))
+        if not (cu.get("Ảnh hàng hoàn") and cu.get("Chi tiết lệch")):
+            hoi_lech(chat, mid, cu["ID"], u, v)
+        return
     with _LOCK:
         tid = new_id("HHV")
         row = {"ID": tid, "Loại": LOAI["hoan"][1], "Trạng thái": "Chờ CS gắn đơn", "MVĐ hoàn về": r9.get("MVĐ", ""),
                "Ngày tạo": datetime.now().strftime("%Y-%m-%d %H:%M"), "Người tạo": who, "Tình trạng hàng hoàn": v,
-               "Ngày hàng hoàn về": today(), "Người nhận hoàn": who, "Cần duyệt": "✓",
+               "Ngày hàng hoàn về": today(), "Người nhận hoàn": who,
                "Ảnh hàng hoàn": r9.get("Ảnh", ""), "Lịch sử": f"{now()} {who}: kho nhận kiện hoàn {v}, chưa rõ đơn"}
         o, sp = sp_don(r9.get("MVĐ", ""))
         if o:   # Nhanh biết đơn → gắn sẵn cho CS
             import nhanh as NH
             row.update({"Mã đơn": o.get("ma_san") or o.get("id"), "Kênh": NH.TEN_KENH.get(o["kenh"], o["kenh"]),
-                        "Chi tiết": f"Trong kiện phải có: {sp}"})
+                        "Chi tiết": f"Trong kiện phải có: {sp}", "Trạng thái": "Chờ khiếu nại sàn"})
             row["Lịch sử"] = f"{now()} {who}: kho nhận kiện hoàn {v}, Nhanh: đơn {row['Mã đơn']}"
         row["_id"] = TG.kho("add", table=TG.sname(BANG), rows=[row])[0]
         TG._CACHE.pop(TG.sname(BANG), None)
     TG.kho("update", table=TG.sname(HOAN), id=rid, fields={"Ticket": tid})
-    tedit(chat, mid, f"📥 <code>{esc(r9.get('MVĐ'))}</code>: {esc(v)} — {esc(who)} → mở <b>{tid}</b> cho CS")
+    tedit(chat, mid, f"📥 <code>{esc(r9.get('MVĐ'))}</code>: {esc(v)} — {esc(who)} → ghi <b>{tid}</b>\n"
+          + ("→ Khiếu nại trên sàn (kèm video mở kiện + video đóng gói), xong bấm nút dưới." if row.get("Mã đơn")
+             else "→ Nhanh chưa ra đơn: CS tìm đơn rồi bấm 🔗 Gắn mã đơn trên thẻ ở nhóm Đổi trả."),
+          btns(row) if row.get("Mã đơn") else None)
     ro = f"Nhanh: đơn {row['Mã đơn']}" if row.get("Mã đơn") else "chưa rõ đơn"
-    refresh(row, f"📥 Kho nhận kiện hoàn <b>{esc(v)}</b>, {esc(ro)} → CS xử lý với sàn", True)
-    for u2 in duyet_ids():
-        tsend(u2, f"⚠️ <b>Hàng hoàn {esc(v)}</b> ({esc(ro)})\n\n" + card(row))
+    refresh(row, f"📥 Kho nhận kiện hoàn <b>{esc(v)}</b>, {esc(ro)} → "
+                 + ("kho khiếu nại trên sàn (kèm video mở kiện), xong bấm nút trên thẻ" if row.get("Mã đơn")
+                    else "CS tìm đơn rồi bấm 🔗 Gắn mã đơn"), True)
+    if not row.get("Mã đơn"):
+        for u2 in duyet_ids():
+            tsend(u2, f"⚠️ <b>Hàng hoàn {esc(v)}</b> ({esc(ro)})\n\n" + card(row))
     hoi_lech(chat, mid, tid, u, v)
 
 
@@ -1212,7 +1448,10 @@ def on_lech(m, p):
     if thieu:
         return prompt(chat, m["message_id"], r["ID"], "lech", u,
                       f"Còn thiếu <b>{' + '.join(thieu)}</b>: {esc(who)} trả lời tin này để bổ sung.")
-    tsend(chat, f"✅ {esc(r['ID'])}: đã lưu ảnh + chi tiết lệch. CS/chủ shop xử lý tiếp với sàn.", reply_to=m["message_id"])
+    tiep = ("Kho khiếu nại trên sàn (kèm video mở kiện + video đóng gói) rồi bấm <b>⚠️ Đã khiếu nại trên sàn</b> trên thẻ."
+            if r.get("Trạng thái") == "Chờ khiếu nại sàn" else
+            "CS tìm đơn rồi bấm 🔗 Gắn mã đơn trên thẻ." if r.get("Trạng thái") == "Chờ CS gắn đơn" else "CS/chủ shop xử lý tiếp.")
+    tsend(chat, f"✅ {esc(r['ID'])}: đã lưu ảnh + chi tiết lệch. {tiep}", reply_to=m["message_id"])
     refresh(r, f"📝 Lệch: {esc(r.get('Chi tiết lệch'))} ({esc(who)})", True)
     for q in duyet_ids():
         tsend(q, f"📝 <b>{esc(r['ID'])}</b> kho báo lệch: {esc(r.get('Chi tiết lệch'))}\n\n" + card(r))
@@ -1277,7 +1516,7 @@ def on_update(u):
     if par and f"{chat}:{par['message_id']}" in PEND:
         JOBS.put(u); return True
     mg = m.get("media_group_id")
-    if mg and lenh in ("/hoan", "/chothoan", "/giao", "/giulai"):
+    if mg and lenh in ("/hoan", "/chothoan", "/giao", "/giulai", "/chotca"):
         ALBUM[mg] = (lenh, time.time())
     elif mg and not lenh and mg in ALBUM and time.time() - ALBUM[mg][1] < 120:
         JOBS.put(u); return True
@@ -1332,6 +1571,11 @@ def handle(u):
                 return tsend(cq["message"]["chat"]["id"], "Bạn cần ở nhóm Đổi trả mới mở được ticket.")
             wiz_start(uid, cq["message"]["chat"]["id"], p[2], ten(cq["from"]), ma=":".join(p[3:]))
             return
+        if p[1] == "mk":   # loại khác cho đơn đã tra
+            answer(cq)
+            ma = ":".join(p[2:])
+            b = [[{"text": LOAI[k][1], "callback_data": f"tk:mm:{k}:{ma}"}] for k in LOAI if k != "hoan"]
+            return tsend(cq["message"]["chat"]["id"], f"Chọn loại ticket cho đơn <code>{esc(ma)}</code>:", b)
         if p[1] == "m":
             answer(cq)
             if not is_member(uid):
@@ -1357,6 +1601,8 @@ def handle(u):
     mg = m.get("media_group_id")
     if not lenh and mg and mg in ALBUM:
         lenh = ALBUM[mg][0]
+        if lenh == "/chotca":
+            text = "/chotca"
     if lenh in ("/hoan", "/chothoan", "/giao", "/giulai") and m.get("photo") and not ma_list(arg):
         ma_anh = doc_ma_anh(m, chu=lenh == "/chothoan")
         if not ma_anh:
@@ -1376,6 +1622,11 @@ def handle(u):
                 wiz_text(uid, text)
             return
         return wiz_text(uid, text)
+    if private and not lenh and uid not in WIZ and uid in CHO_MA and time.time() - CHO_MA[uid] < 900 \
+            and text and not m.get("photo") and ma_list(text):
+        if not is_member(uid):
+            return tsend(chat, "Bạn cần ở nhóm Đổi trả mới mở được ticket.")
+        return tu_dong(uid, chat, ma_list(text)[0], ten(m.get("from")))
     if private and not lenh and uid not in WIZ:
         for f in EXT_TEXT:
             if f(m):
@@ -1388,14 +1639,25 @@ def handle(u):
     if lenh == "/start" and arg.split("_")[0] in EXT_START:
         return EXT_START[arg.split("_")[0]](m, arg)
     if lenh == "/start" and arg.startswith("tkm_"):
-        ma = arg[4:]
-        b = [[{"text": f"{LOAI[k][1]}", "callback_data": f"tk:mm:{k}:{ma[:40]}"}] for k in LOAI if k != "hoan"]
-        return tsend(chat, f"🎫 Mở ticket cho đơn <code>{esc(ma)}</code> — loại nào?", b)
+        return tu_dong(uid, chat, arg[4:], ten(m.get("from")))
+    if lenh in ("/tk", "/ticket") and ma_list(arg):
+        ma = ma_list(arg)[0]
+        if private:
+            return tu_dong(uid, chat, ma, ten(m.get("from")))
+        return tsend(chat, f"🎫 Mở ticket đơn <code>{esc(ma)}</code>: bấm nút → bot tra đơn, gợi ý loại, điền sẵn thông tin "
+                           "(chat riêng vì có SĐT/địa chỉ).",
+                     [[{"text": "🎫 Mở ticket đơn này", "url": f"https://t.me/{me()['username']}?start=tkm_{ma[:40]}"}]],
+                     reply_to=m["message_id"])
+    if lenh in ("/tk", "/ticket") and private:
+        CHO_MA[uid] = time.time()
+        b = [[{"text": LOAI[k][1], "callback_data": f"tk:m:{k}"}] for k in LOAI if k != "hoan"]
+        return tsend(chat, "🎫 <b>Gửi mã đơn hoặc MVĐ</b> — bot tự tra Nhanh, gợi ý loại ticket và điền sẵn khách/SKU.\n"
+                           "Không có mã đơn thì chọn loại bên dưới:", b)
     if lenh == "/start" and arg.startswith("tk_") and arg[3:] in LOAI:
         return wiz_start(uid, chat, arg[3:], ten(m.get("from")))
     loai = lenh.lstrip("/")
     if loai in LOAI and loai != "hoan" and private:
-        return wiz_start(uid, chat, loai, ten(m.get("from")))
+        return wiz_start(uid, chat, loai, ten(m.get("from")), (ma_list(arg) or [""])[0])
     if lenh == "/dangnhapnhanh":
         if str(uid) not in duyet_ids():
             return tsend(chat, "Chỉ chủ shop dùng lệnh này.")
@@ -1416,7 +1678,7 @@ def handle(u):
     if lenh == "/hoan":
         kq = cmd_hoan(m, arg)
         mas = list(dict.fromkeys(x for x in ma_list(arg)))
-        if mas:   # đối chiếu yêu cầu trả hàng trên sàn → KHỚP/LỆCH + nút cho kho (chủ shop chốt 14/11)
+        if mas and not m.get("_doi_chieu"):   # 1 kiện đã gộp đối chiếu vào tin hỏi tình trạng   # đối chiếu yêu cầu trả hàng trên sàn → KHỚP/LỆCH + nút cho kho (chủ shop chốt 14/11)
             try:
                 import hoan_san
                 hoan_san.gui_doi_chieu(m["chat"]["id"], mas, reply_to=m["message_id"])
@@ -1451,6 +1713,10 @@ def nhac(send=False):
          lambda r: f"{esc(r['ID'])} → {esc(r.get('SKU đổi sang'))}")
     nhom("🔗 Hàng hoàn chưa rõ đơn", [r for r in mo if r.get("Trạng thái") == "Chờ CS gắn đơn"],
          lambda r: f"{esc(r['ID'])} MVĐ {mask(r.get('MVĐ hoàn về'))}")
+    nhom("⚠️ Hàng hoàn xấu chưa khiếu nại sàn", [r for r in mo if r.get("Trạng thái") == "Chờ khiếu nại sàn"],
+         lambda r: f"{esc(r['ID'])} đơn {esc(r.get('Mã đơn'))} · {esc(r.get('Tình trạng hàng hoàn'))}")
+    nhom("⏳ Đã khiếu nại, chờ sàn trả lời", [r for r in mo if r.get("Trạng thái") == "Chờ sàn trả lời"],
+         lambda r: f"{esc(r['ID'])} đơn {esc(r.get('Mã đơn'))}")
     nhom("🧾 Chờ chủ shop duyệt", [r for r in mo if r.get("Trạng thái") == "Chờ duyệt"],
          lambda r: f"{esc(r['ID'])} {esc(r.get('Loại'))}")
     nhom("⚖️ Lỗi kho chờ xác nhận phạt", [r for r in rs if str(r.get("Phạt kho", "")).startswith("Chờ")],

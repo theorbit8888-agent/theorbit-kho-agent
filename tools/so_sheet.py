@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """SỔ TRÊN GOOGLE SHEET "KHO DỮ LIỆU" — chủ shop chốt 14/11/2026: mọi dữ liệu CSKH + kho (đổi, hoàn, huỷ…)
-phải nằm trên Sheet để tự kiểm lại. Không ghi tên/SĐT/địa chỉ khách.
+phải nằm trên Sheet để tự kiểm lại. Bảng đơn đổi/trả có Tên/SĐT/Địa chỉ KH (chủ shop 16/11/2026) — Sheet riêng, không dán vào nhóm.
 
 Bảng (trên Sheet có tiền tố "SP "):
   DD · ĐƠN ĐỔI           agent CSKH ghi bằng lệnh `add` (mỗi món đổi 1 dòng; trùng mã sàn + SKU cũ thì sửa dòng cũ)
@@ -9,8 +9,9 @@ Bảng (trên Sheet có tiền tố "SP "):
   (Hàng hoàn về /hoan đã có ở 09 · HÀNG HOÀN NHẬN.)
 Đồng bộ chỉ gửi dòng đổi (băm nội dung, nhớ ở logs/so_sheet.json). Tự chạy: cuối mỗi lượt hoan_san + sau mỗi lần đồng bộ Nhanh.
 
-  python3 tools/so_sheet.py add --ma-san X [--kenh tiktok|shopee|web] [--ma-nhanh N] [--mvd JT…] --sku-cu A --sku-moi B
-                                [--phi 25000|0] [--ly-do "đổi size"] [--nvbh "Tên NV đã kiểm"] [--nguoi "ai ghi"] [--ngay YYYY-MM-DD]
+  python3 tools/so_sheet.py add [--loai doi|tra] --ma-san X [--kenh tiktok|shopee|web|meta|zalo|store] [--ma-nhanh N] [--mvd JT…] --sku-cu A --sku-moi B
+                                [--phi 25000|0] [--ly-do "đổi size"] --ten "Tên KH" --sdt 09… --dc "Địa chỉ" [--nvbh "Tên NV đã kiểm"] [--nguoi "ai ghi"] [--ngay YYYY-MM-DD]
+  python3 tools/so_sheet.py xem <mã sàn|mã Nhanh>   # đọc lại dòng vừa ghi
   python3 tools/so_sheet.py dongbo      # đồng bộ YH + HU
   python3 tools/so_sheet.py setup       # tạo/thêm cột 3 bảng
 """
@@ -23,8 +24,8 @@ ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 CACHE = os.path.join(ROOT, "logs", "so_sheet.json")
 
 DOI = "DD · ĐƠN ĐỔI"
-DOI_COLS = ["Ngày", "Kênh", "Mã đơn sàn", "Mã đơn Nhanh", "MVĐ J&T", "SKU cũ", "SKU mới", "Phí đổi", "Lý do",
-            "NVBH đã kiểm", "Người ghi", "Ghi lúc", "Ghi chú"]
+DOI_COLS = ["Ngày", "Loại", "Kênh", "Mã đơn sàn", "Mã đơn Nhanh", "MVĐ J&T", "SKU cũ", "SKU mới", "Phí đổi", "Lý do",
+            "Tên KH", "SĐT KH", "Địa chỉ KH", "NVBH đã kiểm", "Người ghi", "Ghi lúc", "Ghi chú"]
 YC = "YH · YÊU CẦU HOÀN SÀN"
 YC_COLS = ["Mã yêu cầu", "Kênh", "Loại", "Lý do khách", "Trạng thái sàn", "Việc shop", "MVĐ", "Hạn sàn",
            "Kiện về shop", "Kho /hoan lúc", "Kho xử lý", "Kho xử lý lúc", "Bot thấy lần đầu", "Bot thấy lần cuối",
@@ -35,7 +36,7 @@ HUY_COLS = ["Mã đơn Nhanh", "Mã đơn sàn", "MVĐ", "Kênh", "Ngày huỷ",
 VIEC = {"phan_hoi": "Phản hồi yêu cầu", "xac_nhan": "Xác nhận hàng trả về", "bang_chung": "Gửi bằng chứng",
         "dang_tra": "Khách đang gửi trả", "khang_nghi": "Sàn đã hoàn (còn quyền kháng nghị)",
         "kiem_hang": "Sàn đã hoàn (kiểm hàng)"}
-TEN = {"tiktok": "TikTok", "shopee": "Shopee", "web": "Web"}
+TEN = {"tiktok": "TikTok", "shopee": "Shopee", "web": "Web", "meta": "Meta", "facebook": "Meta", "zalo": "Zalo", "store": "Store"}
 SDT = re.compile(r"(?<!\d)(0|\+?84)\d{8,10}(?!\d)")
 
 
@@ -150,13 +151,14 @@ def dong_bo():
 def add(a):
     def lay(k, mac=""):
         return a[a.index(k) + 1].strip() if k in a and a.index(k) + 1 < len(a) else mac
-    r = {"Ngày": lay("--ngay", datetime.now().strftime("%Y-%m-%d")), "Kênh": TEN.get(lay("--kenh").lower(), lay("--kenh")),
+    r = {"Ngày": lay("--ngay", datetime.now().strftime("%Y-%m-%d")), "Loại": {"tra": "Trả", "trả": "Trả"}.get(lay("--loai").lower(), "Đổi"),
+         "Kênh": TEN.get(lay("--kenh").lower(), lay("--kenh")),
          "Mã đơn sàn": lay("--ma-san"), "Mã đơn Nhanh": lay("--ma-nhanh"), "MVĐ J&T": lay("--mvd"),
          "SKU cũ": lay("--sku-cu").upper(), "SKU mới": lay("--sku-moi").upper(), "Phí đổi": lay("--phi"),
-         "Lý do": lay("--ly-do"), "NVBH đã kiểm": lay("--nvbh"), "Người ghi": lay("--nguoi", "agent CSKH"),
+         "Lý do": lay("--ly-do"), "Tên KH": lay("--ten"), "SĐT KH": lay("--sdt"), "Địa chỉ KH": lay("--dc"), "NVBH đã kiểm": lay("--nvbh"), "Người ghi": lay("--nguoi", "agent CSKH"),
          "Ghi lúc": datetime.now().strftime("%Y-%m-%d %H:%M"), "Ghi chú": lay("--ghi-chu")}
-    if not (r["Mã đơn sàn"] or r["Mã đơn Nhanh"]) or not r["SKU mới"]:
-        sys.exit("thiếu: cần --ma-san (hoặc --ma-nhanh) và --sku-moi")
+    if not (r["Mã đơn sàn"] or r["Mã đơn Nhanh"]) or (r["Loại"] == "Đổi" and not r["SKU mới"]):
+        sys.exit("thiếu: cần --ma-san (hoặc --ma-nhanh); đơn đổi cần thêm --sku-moi")
     if any(SDT.search(r[c]) for c in ("Lý do", "Ghi chú", "NVBH đã kiểm")):
         sys.exit("không ghi SĐT khách lên Sheet — bỏ số điện thoại khỏi lý do/ghi chú")
     if r["Phí đổi"]:
@@ -184,6 +186,11 @@ if __name__ == "__main__":
     if a[0] == "add":
         kq, rid = add(a[1:])
         print(f"đã {kq} 1 dòng ở bảng SP {DOI} ({rid})")
+    elif a[0] == "xem" and len(a) > 1:
+        hit = [x for x in TG.rows(DOI, fresh=True) if a[1] in (str(x.get("Mã đơn sàn")), str(x.get("Mã đơn Nhanh")))]
+        for x in hit:
+            print({c: x.get(c) for c in DOI_COLS if x.get(c) not in (None, "")})
+        print(f"{len(hit)} dòng")
     elif a[0] == "dongbo":
         print(dong_bo())
     elif a[0] == "setup":

@@ -10,12 +10,14 @@ Nhóm "The Orbit - CS & Cửa hàng" (env CH_CHAT_ID):
   /ket                       két hiện tại phải có + chi trong ca
   /bill <mã đơn> <số tiền> <lý do>   (ảnh bill ở chú thích) sổ chuyển khoản; 21:30 chủ shop nhận 1 danh sách để xác nhận
   /goi <mã đơn> <ghi chú>    CS nhờ store gói / book ship / chừa hàng → thẻ việc có nút
-  /chotca                    CS chốt ca 22h: số tin tồn + checklist bằng nút
+  /chotca                    NVBH chốt mỗi ca (16h, 22h): tin tồn + ẢNH STORE (bắt buộc, reply phiếu hoặc kèm ảnh) + checklist;
+                             bot liệt kê việc còn mở: tin khách (ca/xác nhận đơn/note) chưa bấm xong, ticket đổi trả chờ CS,
+                             việc store chưa xong; báo hết mà còn sót → ping nhóm + quản lý (không còn CSKH riêng từ 19/11)
 Nhóm "Đổi trả CS-Kho" / nhóm kho:
   /note <mã đơn> <ghi chú>   CS ghi chú đơn cho kho (đổi size trước gói, thêm túi, đi hoả tốc…) — bot tra Nhanh: đơn đã đi chưa
   /hoatoc <mã đơn>           đơn hoả tốc cần book ship ngay → kho bấm Đã book
 Lịch (`cua_hang.py hen`, launchd vn.theorbit.kho-agent.cuahang): 10:00/14:00/18:00 nhắc việc treo, 21:30 sổ CK cho
-chủ shop, 21:50 nhắc CS chốt ca, Chủ nhật 22:30 báo cáo tuần két + CK + chốt ca.
+chủ shop, 15:50/21:50 nhắc NVBH chốt ca (tag người trong ca), 16:20/22:20 chưa chốt → báo quản lý, Chủ nhật 22:30 báo cáo tuần két + CK + chốt ca.
 """
 import os, re, sys, time
 from datetime import datetime, timedelta
@@ -35,8 +37,15 @@ VIEC_COLS = ["ID", "Loại", "Mã đơn", "Nội dung", "Người giao", "Lúc g
              "Nhanh", "Thẻ tin"]
 CS = "CS · CHỐT CA"
 CS_COLS = ["Ngày", "Giờ", "Người", "Tồn Meta", "Tồn TikTok", "Tồn Shopee", "Tồn Zalo OA", "Tồn Zalo", "Checklist",
-           "Còn tồn việc", "Ảnh"]
-CHECK = ["Phản hồi 100% đánh giá sàn", "Kiểm tin ẩn/spam Meta", "Đơn CNV Loyalty", "Đơn Web", "Tin TikTok TO"]
+           "Còn tồn việc", "Ảnh", "Ca", "Báo hết ticket", "Ticket CSKH còn", "Ticket đổi trả còn", "Bot kiểm",
+           "Việc store còn", "Số ảnh store", "Ảnh (xem)"]
+CHECK = ["Phản hồi 100% đánh giá sàn", "Kiểm tin ẩn/spam Meta", "Đơn CNV Loyalty", "Đơn Web", "Tin TikTok TO",
+         "Đã xử lý HẾT việc (ca khách, xác nhận đơn, note, đổi trả, việc store)"]
+TICKET_I = len(CHECK) - 1
+LICH_F = os.path.expanduser("~/orbit-runtime/lich/ca.json")
+CA_LOG = os.path.expanduser("~/orbit-runtime/cskh/tele_ca.jsonl")
+CA_NUT = os.path.expanduser("~/orbit-runtime/cskh/inbox.jsonl")
+CS_ST = ("Chờ gọi KH", "Chờ tạo đơn đi", "Chờ CS gắn đơn")   # ticket đổi trả đang chờ CS/NVBH làm
 LOAI_CHI = [("Ship/Grab", ("ship", "grab", "xe", "book", "j&t", "jt", "ghtk", "viettel", "ahamove")),
             ("Ăn uống/nước", ("nước", "bánh", "ăn", "cafe", "cà phê", "trà")),
             ("Cúng/ông địa", ("cúng", "ông địa", "hoa", "nhang")),
@@ -391,36 +400,216 @@ def _la_tv(c, uid):
 
 # ======================= CS chốt ca =======================
 
-CS_STATE = {}  # message_id -> {who, ton, tick}
+CS_STATE = {}  # message_id -> {who, ton, tick, anh}
+CS_MG = {}     # media_group_id -> key phiếu (ảnh 2,3… của album gửi kèm /chotca)
+NHOM_TEN = {"ca": "💬", "don": "🧾", "note": "📝"}
+
+
+def ca_hien_tai(t=None):
+    """(tên ca, giờ bắt đầu) của NVBH: Ca 1 10–16h, Ca 2 16–22h (chốt ca 2 trễ sau 0h vẫn tính ngày trước)."""
+    t = t or now()
+    if t.hour < 4:
+        t = t - timedelta(hours=t.hour + 1)
+        return "Ca 2", t.replace(hour=16, minute=0, second=0, microsecond=0)
+    if t.hour < 16:
+        return "Ca 1", t.replace(hour=10, minute=0, second=0, microsecond=0)
+    return "Ca 2", t.replace(hour=16, minute=0, second=0, microsecond=0)
+
+
+def nvbh_ca(ca=None, t=None):
+    """[(tên, telegram id)] NVBH trong ca theo ~/orbit-runtime/lich/ca.json."""
+    try:
+        import json
+        d = json.load(open(LICH_F))
+    except Exception:
+        return []
+    ca, bd = ca_hien_tai(t) if ca is None else (ca, t or now())
+    ds = (d.get("lich", {}).get("NVBH", {}).get(bd.strftime("%Y-%m-%d")) or {}).get(ca) or []
+    return [(n, d.get("nguoi", {}).get(n)) for n in ds]
+
+
+def tag(ds):
+    return ", ".join(f'<a href="tg://user?id={i}">{esc(n)}</a>' if i else esc(n) for n, i in ds)
+
+
+def kiem_ticket(tu):
+    """Việc còn mở: (tin ca khách / xác nhận đơn / note khách gửi từ `tu` chưa bấm xong, ticket đổi trả đang chờ CS,
+    việc store /goi /note /hoatoc chưa xong). Không còn CSKH riêng (19/11) → NVBH lo hết."""
+    import json
+    xong = set()
+    try:
+        for l in open(CA_NUT):
+            if '"nut"' in l:
+                e = json.loads(l)
+                if e.get("nut") == "xong":
+                    xong.add((str(e.get("chat")), int(e.get("mid") or 0)))
+    except OSError:
+        pass
+    nhom, ts = {}, tu.timestamp()   # 1 khách/đơn gửi 2 lần = 1 việc; bấm xong ở tin nào cũng tính xong
+    try:
+        for l in open(CA_LOG):
+            if not l.strip():
+                continue
+            x = json.loads(l)
+            if x.get("nhom", "ca") not in NHOM_TEN or x.get("time", 0) < ts:
+                continue
+            k = (x.get("nhom", "ca"), str(x.get("khach") or ""), str(x.get("order") or ""))
+            g = nhom.setdefault(k, {"x": x, "xong": False})
+            g["x"] = x
+            g["xong"] = g["xong"] or (str(x.get("chat")), int(x.get("mid") or 0)) in xong
+    except OSError:
+        pass
+    ca = [g["x"] for g in nhom.values() if not g["xong"]]
+    try:
+        tk = [r for r in TK.all_rows() if r.get("Trạng thái") in CS_ST]
+    except BaseException:
+        tk = []
+    try:
+        viec = [r for r in rows(VIEC) if r.get("Trạng thái") not in ("Xong", "Huỷ")]
+    except BaseException:
+        viec = []
+    return ca, tk, viec
+
+
+def link_ca(x):
+    c = str(x.get("chat") or "")
+    return f"https://t.me/c/{c[4:]}/{x.get('mid')}" if c.startswith("-100") else ""
+
+
+def ds_ticket(ca, tk, viec=(), toi_da=12):
+    L = []
+    for x in ca[:toi_da]:
+        lk = link_ca(x)
+        nd = NHOM_TEN.get(x.get("nhom", "ca"), "") + " " + esc(re.sub(r"^\[[^\]]*\]\s*", "", x.get("ca", ""))) + f" · {esc(x.get('khach') or '')}" + (f" · đơn {esc(x.get('order'))}" if str(x.get("order") or "").lower() not in ("", "-", "chua co", "chưa có") else "")
+        L.append(f'• <a href="{lk}">{nd}</a>' if lk else f"• {nd}")
+    if len(ca) > toi_da:
+        L.append(f"• … thêm {len(ca) - toi_da} tin khách")
+    for r in tk[:toi_da]:
+        L.append(f"• 🎫 {esc(r.get('ID'))} {esc(r.get('Loại'))} đơn {esc(r.get('Mã đơn'))} — {esc(r.get('Trạng thái'))}")
+    if len(tk) > toi_da:
+        L.append(f"• … thêm {len(tk) - toi_da} ticket đổi trả")
+    for r in list(viec)[:toi_da]:
+        L.append(f"• 🛍 {esc(r.get('ID'))} {esc(r.get('Loại'))} đơn {esc(r.get('Mã đơn'))} — {esc(r.get('Trạng thái'))}")
+    if len(viec) > toi_da:
+        L.append(f"• … thêm {len(viec) - toi_da} việc store")
+    return "\n".join(L)
+
+
+def kiem_text(ca, tk, viec):
+    if not (ca or tk or viec):
+        return "✅ không còn việc mở"
+    return f"còn {len(ca)} tin khách + {len(tk)} ticket đổi trả + {len(viec)} việc store"
+
+
+def cs_kiem(st):
+    bd = datetime.fromisoformat(st["bd"]) if st.get("bd") else ca_hien_tai()[1]
+    ca, tk, viec = kiem_ticket(bd.replace(hour=10, minute=0))   # tin khách từ 10h hôm đó: ca 1 sót thì ca 2 lo tiếp
+    pn = kiem_pn_chua(st)
+    if pn:
+        viec = list(viec) + [pn]
+    st["kiem"] = kiem_text(ca, tk, viec) + (":\n" + ds_ticket(ca, tk, viec, 8) if (ca or tk or viec) else "")
+    st["kiem_luc"] = now().strftime("%H:%M")
+    return ca, tk, viec
+
+
+def pn_nhac(ca):
+    """Ca 2: kho PN hôm nay có đi hàng mà chưa kiểm → thêm 1 dòng vào tin nhắc chốt ca."""
+    if ca != "Ca 2":
+        return ""
+    try:
+        import kho_flow as KF
+        ds = KF.ds_kiem_pn()
+        if ds and not any(r.get("Ngày") == ngay() and r.get("Kho") == "PN" for r in rows(KF.KIEM)):
+            return (f"\n🔢 <b>Kiểm kho PN</b>: hôm nay đi {len(ds)} mã — đếm hàng trên kệ rồi gõ <code>/kiemkho</code> + các số "
+                    "(thẻ danh sách bot gửi 21:50). Việc này nằm trong phiếu chốt ca, chưa kiểm là phiếu báo còn việc mở.")
+    except BaseException as e:
+        print("hen: pn_nhac lỗi", e)
+    return ""
+
+
+def kiem_pn_chua(st):
+    """Ca 2: kho PN hôm nay có đi hàng mà chưa /kiemkho → 1 việc còn mở."""
+    if st.get("ca") != "Ca 2":
+        return None
+    try:
+        import kho_flow as KF
+        ds = KF.ds_kiem_pn()
+        if not ds:
+            return None
+        if any(r.get("Ngày") == ngay() and r.get("Kho") == "PN" for r in rows(KF.KIEM)):
+            return None
+    except BaseException as e:
+        print("chotca: kiểm PN lỗi", e)
+        return None
+    return {"ID": "🔢", "Loại": f"Kiểm kho PN ({len(ds)} mã)", "Mã đơn": "—", "Trạng thái": "chưa /kiemkho"}
+
+
+def anh_fid(m):
+    return max(m["photo"], key=lambda x: x.get("file_size", 0))["file_id"] if m.get("photo") else ""
+
+
+def cs_ve(st):
+    """Vẽ lại phiếu chốt ca (sau khi thêm ảnh / tick)."""
+    if st.get("mid"):
+        tedit(st["chat"], st["mid"], cs_text(st), cs_btn(st["key"], st))
 
 
 def chotca(m, arg):
     c, who = m["chat"]["id"], ten(m.get("from"))
+    mg = m.get("media_group_id")
+    if mg and mg in CS_MG:   # ảnh 2,3… của album kèm /chotca
+        st = TK.STATE_KF.get("cs" + CS_MG[mg])
+        if st and anh_fid(m):
+            st["anh"].append(anh_fid(m)); TK._save(); cs_ve(st)
+        return
     ton = {}
     for k, pat in (("Meta", r"meta|fb|ig"), ("TikTok", r"tiktok|tt"), ("Shopee", r"shopee|sp"),
                    ("Zalo OA", r"oa"), ("Zalo", r"zalo(?!\s*oa)")):
         mm = re.search(rf"(?:{pat})\D{{0,6}}(\d+)", arg.lower())
         if mm:
             ton[k] = int(mm[1])
-    st = {"who": who, "ton": ton, "tick": [False] * len(CHECK), "uid": m["from"]["id"]}
+    ca, bd = ca_hien_tai()
     key = str(m["message_id"])
+    st = {"who": who, "ton": ton, "tick": [False] * len(CHECK), "uid": m["from"]["id"], "ca": ca, "bd": bd.isoformat(),
+          "anh": [anh_fid(m)] if anh_fid(m) else [], "chat": c, "key": key}
+    if mg:
+        CS_MG[mg] = key
+    cs_kiem(st)
     CS_STATE[key] = st
     TK.STATE_KF["cs" + key] = st
+    st["mid"] = tsend(c, cs_text(st), cs_btn(key, st), reply_to=m["message_id"])
+    if st["mid"]:   # trả lời (reply) phiếu bằng ảnh store → gắn vào phiếu
+        TK.PEND[f"{c}:{st['mid']}"] = {"id": key, "f": "cs_anh", "u": st["uid"]}
     TK._save()
-    st["mid"] = tsend(c, cs_text(st), cs_btn(key, st))
 
 
 def cs_text(st):
-    ton = st["ton"]
-    return (f"📋 <b>CHỐT CA CS</b> {now():%d/%m} · {esc(st['who'])}\n"
+    ton, n = st["ton"], len(st.get("anh") or [])
+    return (f"📋 <b>CHỐT CA NVBH</b> {now():%d/%m} · {esc(st.get('ca', ''))} · {esc(st['who'])}\n"
             f"Tin tồn: " + (", ".join(f"{k} {v}" for k, v in ton.items()) if ton else
                             "<i>chưa ghi — gõ lại /chotca meta 0 tiktok 0 shopee 0 oa 0 zalo 0</i>")
-            + "\n" + "\n".join(f"{'✅' if t else '⬜'} {c}" for c, t in zip(CHECK, st["tick"])))
+            + "\n📷 Ảnh store: " + (f"<b>{n} ảnh</b> ✅" if n else
+                                    "<b>chưa có</b> — trả lời tin này (reply) bằng ảnh store: quầy, kệ/móc, két, phòng thử, sàn")
+            + "\n" + "\n".join(f"{'✅' if t else '⬜'} {c}" for c, t in zip(CHECK, st["tick"]))
+            + (f"\n\n🤖 <b>Việc còn mở</b> (kiểm {st.get('kiem_luc', '')}): {st['kiem']}" if st.get("kiem") else ""))
 
 
 def cs_btn(mid, st):
     b = [[{"text": f"{'✅' if t else '⬜'} {c}", "callback_data": f"ch:cs:{mid}:{i}"}] for i, (c, t) in enumerate(zip(CHECK, st["tick"]))]
-    return b + [[{"text": "📤 Gửi chốt ca", "callback_data": f"ch:cs:{mid}:gui"}]]
+    return b + [[{"text": "🔄 Kiểm lại việc còn mở", "callback_data": f"ch:cs:{mid}:kiem"}],
+                [{"text": "📤 Gửi chốt ca", "callback_data": f"ch:cs:{mid}:gui"}]]
+
+
+def cs_anh(m, p):
+    st = TK.STATE_KF.get("cs" + p["id"])
+    c = m["chat"]["id"]
+    if not st:
+        return tsend(c, "Phiếu chốt ca đã gửi/hết hạn — gõ /chotca lại nếu cần.", reply_to=m["message_id"])
+    TK.PEND[f"{c}:{st['mid']}"] = p; TK._save()   # giữ để nhận thêm ảnh (album)
+    if not anh_fid(m):
+        return tsend(c, "Cần <b>ảnh</b> store: trả lời phiếu chốt ca bằng ảnh nhé.", reply_to=m["message_id"])
+    st["anh"].append(anh_fid(m)); TK._save()
+    cs_ve(st)
 
 
 def cs_cb(cq, p):
@@ -429,15 +618,50 @@ def cs_cb(cq, p):
     if not st:
         return answer(cq, "Phiếu cũ, gõ /chotca lại", True)
     c, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
+    st.setdefault("chat", c); st.setdefault("key", key); st.setdefault("anh", []); st["mid"] = mid
+    if a == "kiem":
+        answer(cq, "Đang kiểm…")
+        cs_kiem(st); TK.STATE_KF["cs" + key] = st; TK._save()
+        return tedit(c, mid, cs_text(st), cs_btn(key, st))
     if a == "gui":
-        add(CS, {"Ngày": ngay(), "Giờ": now().strftime("%H:%M"), "Người": st["who"],
+        if not st["anh"]:
+            return answer(cq, "Cần ít nhất 1 ảnh store: trả lời (reply) phiếu này bằng ảnh rồi bấm Gửi.", True)
+        answer(cq, "Bot đang kiểm việc còn mở…")
+        ca, tk, viec = cs_kiem(st)
+        bao_het = st["tick"][TICKET_I]
+        sach = not ca and not tk and not viec
+        kq = kiem_text(ca, tk, viec)
+        rid = add(CS, {"Ngày": ngay(), "Giờ": now().strftime("%H:%M"), "Người": st["who"], "Ca": st.get("ca", ""),
+                 "Ảnh": ", ".join("tg:" + f for f in st["anh"]), "Số ảnh store": len(st["anh"]), "Việc store còn": len(viec),
                  **{f"Tồn {k}": v for k, v in st["ton"].items()},
                  "Checklist": "; ".join(f"{'✓' if t else '✗'} {k}" for k, t in zip(CHECK, st["tick"])),
-                 "Còn tồn việc": ", ".join(k for k, t in zip(CHECK, st["tick"]) if not t)})
-        answer(cq, "Đã gửi")
+                 "Còn tồn việc": ", ".join(k for k, t in zip(CHECK, st["tick"]) if not t),
+                 "Báo hết ticket": "Rồi" if bao_het else "Chưa",
+                 "Ticket CSKH còn": len(ca), "Ticket đổi trả còn": len(tk),
+                 "Bot kiểm": kq + (" · BÁO SAI" if bao_het and not sach else "")})
+        try:
+            TG.xem_anh(CS, rid, "Ảnh", TG.download(st["anh"][0]))
+        except BaseException as e:
+            print("cua_hang: ảnh chốt ca lỗi", e, flush=True)
+        TK.PEND.pop(f"{c}:{mid}", None)
         thieu = [k for k, t in zip(CHECK, st["tick"]) if not t]
-        tedit(c, mid, cs_text(st) + "\n\n📤 Đã ghi Sheet" + (f" · ⚠️ còn: {', '.join(thieu)}" if thieu else " · đủ ✅"))
+        st.pop("kiem", None)
+        tedit(c, mid, cs_text(st) + "\n\n📤 Đã ghi Sheet" + (f" · ⚠️ chưa tick: {', '.join(thieu)}" if thieu else " · checklist đủ ✅")
+              + f"\n🤖 Bot kiểm: {kq}")
+        if not sach:
+            ql = [(f"Quản lý", i) for i in sorted(TK.duyet_ids())]
+            dau = (f"🚨 <b>{esc(st['who'])} báo ĐÃ XỬ LÝ HẾT nhưng bot kiểm còn sót</b>" if bao_het
+                   else f"⚠️ <b>{esc(st['who'])} chốt {esc(st.get('ca', ''))} còn việc chưa xử lý</b>")
+            t = (dau + f" ({len(ca)} tin khách chưa bấm ✅ xong, {len(tk)} ticket đổi trả chờ CS, {len(viec)} việc store chưa xong):\n"
+                 + ds_ticket(ca, tk, viec) + f"\n👉 <a href=\"tg://user?id={st['uid']}\">{esc(st['who'])}</a> xử lý + bấm nút xong trên từng tin"
+                 + (f"\ncc {tag(ql)}" if ql and bao_het else ""))
+            tsend(c, t)
+            if bao_het:
+                for i in TK.duyet_ids():
+                    tsend(i, t)
         TK.STATE_KF.pop("cs" + key, None); CS_STATE.pop(key, None); TK._save()
+        for g in [g for g, k in CS_MG.items() if k == key]:
+            CS_MG.pop(g, None)
         return
     st["tick"][int(a)] = not st["tick"][int(a)]
     TK.STATE_KF["cs" + key] = st
@@ -471,9 +695,40 @@ def hen(send=False):
             print("hen: checklist kho lỗi", e)
     if h == 21 and mi < 45:
         gui_so_ck(send)
-    if h == 21 and mi >= 45 and chat():
-        if not [r for r in rows(CS) if r.get("Ngày") == ngay()]:
-            out.append((chat(), "🕙 CS ơi chốt ca: <code>/chotca meta 0 tiktok 0 shopee 0 oa 0 zalo 0</code> rồi tick checklist."))
+    if h in (15, 21) and mi >= 45 and chat():   # cuối ca NVBH: nhắc người trong ca chốt ca
+        ca = "Ca 1" if h == 15 else "Ca 2"
+        if not [r for r in rows(CS) if r.get("Ngày") == ngay() and r.get("Ca") == ca]:
+            ds = nvbh_ca(ca, now())
+            out.append((chat(), f"🕙 {tag(ds) or 'NVBH'} ơi chốt {ca}: gõ <code>/chotca meta 0 tiktok 0 shopee 0 oa 0 zalo 0</code> "
+                                "rồi <b>trả lời phiếu bằng ảnh store</b> + tick checklist — mục cuối: đã xử lý hết việc (bot tự kiểm lại)." + pn_nhac(ca)))
+        if h == 21:   # 21:50 cuối ca 2: kiểm kho Phú Nhuận (chỉ khi hôm nay PN có đi hàng; chủ shop 21/11)
+            try:
+                import kho_flow as KF
+                if send:
+                    KF.gui_the_pn(chat(), tag(nvbh_ca("Ca 2", now())))
+                else:
+                    print(KF.tin_kiem_pn())
+            except Exception as e:
+                print("hen: kiểm kho PN lỗi", e)
+    if (h, mi >= 15) in ((16, True), (22, True)) and chat():   # quá giờ chưa chốt → báo quản lý
+        ca = "Ca 1" if h == 16 else "Ca 2"
+        if not [r for r in rows(CS) if r.get("Ngày") == ngay() and r.get("Ca") == ca]:
+            ds = nvbh_ca(ca, now().replace(hour=10 if ca == "Ca 1" else 16))
+            t = f"⏰ {ca} NVBH ({tag(ds) or 'chưa rõ người'}) <b>chưa chốt ca</b>. Gõ /chotca giúp nhé."
+            out.append((chat(), t))
+            for o in TK.duyet_ids():
+                out.append((o, t))
+    if h == 22 and mi >= 15 and chat():   # 22:20 kho PN có đi hàng mà chưa kiểm → nhắc nhóm + quản lý
+        try:
+            import kho_flow as KF
+            ds = KF.ds_kiem_pn()
+            if ds and not any(r.get("Ngày") == ngay() and r.get("Kho") == "PN" for r in rows(KF.KIEM)):
+                t = f"⏰ Kho Phú Nhuận hôm nay đi {len(ds)} mã mà <b>chưa kiểm kho</b> ({tag(nvbh_ca('Ca 2', now().replace(hour=16)))}). Gõ /kiemkho giúp nhé."
+                out.append((chat(), t))
+                for o in TK.duyet_ids():
+                    out.append((o, t))
+        except Exception as e:
+            print("hen: nhắc kiểm PN lỗi", e)
     if now().weekday() == 6 and h == 22:
         out.append((TK.duyet_ids() and sorted(TK.duyet_ids())[0], bao_cao_tuan()))
     for c, t in out:
@@ -500,7 +755,7 @@ def bao_cao_tuan():
             f"Két lệch: {len(lech)} lần" + (" (" + ", ".join(f"{esc(r.get('Ngày'))[5:]} {tien(r.get('Lệch'))}" for r in lech[:6]) + ")" if lech else "")
             + f"\nBill CK: {len(ck)} ({tien(sum(TK.tien(r.get('Số tiền')) for r in ck))}), chưa xác nhận "
               f"{len([r for r in ck if not r.get('Chủ shop xác nhận')])}\n"
-            f"CS chốt ca: {len(cs)}/7 ngày, ngày còn việc tồn: {len([r for r in cs if r.get('Còn tồn việc')])}")
+            f"NVBH chốt ca: {len(cs)}/14 ca, báo hết ticket mà bot thấy sót: {len([r for r in cs if 'BÁO SAI' in str(r.get('Bot kiểm') or '')])}, ca còn việc tồn: {len([r for r in cs if r.get('Còn tồn việc')])}")
 
 
 def setup():
@@ -516,7 +771,7 @@ TK.EXT_NHOM.update({k: ("CH_CHAT_ID",) for k in ("/moca", "/chi", "/thu", "/ketc
                                                    "/goi", "/chotca")})
 TK.EXT_NHOM.update({k: ("CHAT_ID", "TICKET_CHAT_ID", "CH_CHAT_ID") for k in ("/note", "/hoatoc")})
 TK.EXT_CB["ch"] = on_cb
-TK.EXT_REPLY.update({"ch_anh": on_reply})
+TK.EXT_REPLY.update({"ch_anh": on_reply, "cs_anh": cs_anh})
 
 if __name__ == "__main__":
     import lark as Lk

@@ -392,6 +392,11 @@ def sau_sync():
                         "nhapnhanh", "--send"], timeout=180)
     except Exception as e:
         print("doi chieu nhap loi:", e)
+    try:   # hàng hoàn xấu Nhanh đã nhập trả → trừ lại tồn (chủ shop 21/11; chỉ ghi khi có logs/tru_ton_bat)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tru_ton.py"),
+                        "chay", "--send"], timeout=300)
+    except Exception as e:
+        print("tru ton loi:", e)
     try:   # sổ huỷ sau in / yêu cầu hoàn lên Sheet (chủ shop 14/11)
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "so_sheet.py"),
                         "dongbo"], timeout=300)
@@ -414,6 +419,25 @@ if __name__ == "__main__":
         sys.exit(0 if login() else 1)
     elif a[0] == "sync":
         import nhanh_api as NA
+        if NA.co_api() and "--nhanh" in a:   # 3 phút/lần (7h–23h): tồn + đơn vừa đổi, rồi báo đơn huỷ sau in
+            if not (7 <= datetime.now().hour < 23):
+                sys.exit(0)
+            try:
+                print(NA.sync_nhanh())
+            except Exception as e:
+                print("đọc nhanh lỗi:", e); sys.exit(1)   # lượt 30 phút sẽ báo lỗi nếu Nhanh hỏng thật
+            try:
+                import subprocess
+                subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "xuat_kho.py"),
+                                "canhhuy", "--send"], timeout=120)
+            except Exception as e:
+                print("canh huy loi:", e)
+            try:   # phiếu chuyển kho Q2→PN: thẻ nhận hàng + đối chiếu Nhanh đã nhận
+                subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "chuyen_kho.py"),
+                                "quet", "--send"], timeout=120)
+            except Exception as e:
+                print("chuyen kho loi:", e)
+            sys.exit(0)
         if NA.co_api():   # có Open API: đọc thẳng máy chủ Nhanh, 24/24, không cần Chrome
             try:
                 print(NA.sync())
