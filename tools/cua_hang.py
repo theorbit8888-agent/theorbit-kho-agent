@@ -804,6 +804,11 @@ def hen(send=False):
             out.extend(TK.nhac_tre(im=True).items())
         except Exception as e:
             print("hen: nhắc ticket quá hạn lỗi", e)
+        try:   # hàng hoàn kho đã nhận mà Nhanh chưa nhập hoàn (nhap_hoan.py)
+            import nhap_hoan as NHH
+            out.extend(NHH.nhac())
+        except Exception as e:
+            print("hen: nhắc nhập hoàn lỗi", e)
     if h == 10:   # checklist đầu ca kho chưa tick đủ → nhắc nhóm kho + chủ shop
         try:
             import kho_flow as KF

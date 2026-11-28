@@ -42,6 +42,10 @@ HƯỚNG DẪN (mỗi dòng):
   hoan-san tt.csv sp.csv  giả tác vụ đọc yêu cầu hoàn TikTok/Shopee → báo nhóm Đổi trả + Kho (csv: xem tools/hoan_san.py)
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   nhanh-sp MVĐ SKU        giả kho sửa sản phẩm trong đơn trên Nhanh (đổi size trước khi giao)
+  nhanh-phieutra MÃ       giả kho nhập hoàn kho / nhập trả trên Nhanh (phiếu nhập trả của đơn gốc)
+  nhaphoan                như sau mỗi lần đồng bộ Nhanh: tick bảng 09, đóng ticket QLBH, kiểm SKU đơn đi đổi
+  nhaphoan-nhac           như 10/14/18h: kiện nguyên vẹn đã nhận mà Nhanh chưa nhập hoàn
+  hoan-lui-ngay MVĐ N     lùi ngày nhận của dòng 09 N ngày (thử nhắc nhập hoàn)
   tk-tre                  nhắc ticket quá hạn từng bước (như lịch 10/14/18h)
   tk-lui ID GIỜ           lùi mốc vào bước hiện tại của ticket N giờ (thử nhắc quá hạn)
   hoatoc-lui V-ID PHÚT    lùi thẻ hoả tốc đổi size N phút rồi chạy nhắc "chưa đổi size"
@@ -244,6 +248,8 @@ import hoan_san  # noqa: E402
 import tru_ton  # noqa: E402
 tru_ton.STATE_F = os.path.join(SAN, "tru_ton.json")
 cua_hang.HT_NHAC_F = os.path.join(SAN, "hoatoc_nhac.json")   # sổ "đã nhắc hoả tốc chưa đổi size"
+import nhap_hoan  # noqa: E402
+nhap_hoan.STATE_F = os.path.join(SAN, "nhap_hoan.json")
 tru_ton.BAT_F = os.path.join(SAN, "tru_ton_bat")
 tru_ton.xuat_nhanh = lambda kho, sp, gc: "THU-" + str(int(time.time()))   # không bao giờ ghi Nhanh thật
 tru_ton.dieu_chinh = lambda kho, lech, gc: "xuất THU-1"
@@ -416,6 +422,30 @@ def dong(line):
         json.dump(od, open(p, "w"))
         json.dump({"dong_bo": time.strftime("%Y-%m-%d %H:%M")}, open(os.path.join(NH.CACHE, "meta.json"), "w"))
         return print(f"   (Nhanh: đơn {ma} giờ là {sku.upper()})")
+    if cmd == "nhanh-phieutra":   # nhanh-phieutra MÃ  → giả kho nhập hoàn / nhập trả trên Nhanh: phiếu nhập trả của đơn gốc
+        o = NH.don_theo_ma(rest.strip())
+        if not o:
+            return print(f"   (Nhanh chưa có đơn {rest.strip()})")
+        p = os.path.join(NH.CACHE, "nhap_tra.json")
+        nt = json.load(open(p)) if os.path.exists(p) else {}
+        nt[o["id"]] = {"bill": str(700000 + len(nt)), "luc": time.strftime("%Y-%m-%d %H:%M:%S"), "nguoi": "Kho Tuấn",
+                       "kho": "", "sp": [[x["ma"], x["sl"], ""] for x in o.get("sp") or []]}
+        json.dump(nt, open(p, "w"))
+        return print(f"   (Nhanh: phiếu nhập trả đơn {o['ma_san'] or o['id']})")
+    if cmd == "nhaphoan":    # như sau mỗi lần đồng bộ Nhanh: tick bảng 09, đóng ticket QLBH, kiểm SKU đơn đi đổi
+        nhap_hoan.dong_bo(send=True)
+        return
+    if cmd == "nhaphoan-nhac":   # như 10/14/18h: kiện nguyên vẹn đã nhận mà Nhanh chưa nhập hoàn
+        for c_, t_ in nhap_hoan.nhac():
+            TK.tsend(c_, t_)
+        return
+    if cmd == "hoan-lui-ngay":   # hoan-lui-ngay MVĐ N → lùi cột Ngày của dòng 09 N ngày (thử nhắc nhập hoàn)
+        ma, n = rest.split()
+        for r in TG.rows(TK.HOAN, fresh=True):
+            if str(r.get("MVĐ")) == ma:
+                TG.kho("update", table=TG.sname(TK.HOAN), id=r["_id"],
+                       fields={"Ngày": time.strftime("%Y-%m-%d", time.localtime(time.time() - int(n) * 86400))})
+        return print(f"   (09: {ma} lùi {n} ngày)")
     if cmd == "tk-tre":      # như lịch 10/14/18h: ticket quá hạn từng bước (canh_bao.json ticket_han_gio)
         TK.nhac_tre(send=True)
         return

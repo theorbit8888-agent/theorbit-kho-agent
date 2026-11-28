@@ -117,7 +117,7 @@ def nhom_ok(lenh, chat):
     return f"Lệnh {lenh} dùng trong nhóm " + " / ".join(f"<b>{TEN_NHOM.get(k, k)}</b>" for k in keys) + "."
 HOAN = "09 · HÀNG HOÀN NHẬN"
 HOAN_COLS = ["Ngày", "MVĐ", "Ticket", "Tình trạng", "Người nhận", "Ảnh", "Ảnh (xem)", "Sàn báo hoàn", "Ghi chú",
-             "Sản phẩm", "Đơn Nhanh"]
+             "Sản phẩm", "Đơn Nhanh", "Nhập hoàn Nhanh"]   # cột cuối: bot tự ghi khi Nhanh đã nhập hoàn (nhap_hoan.py)
 WIZ = {}    # uid -> phiếu đang hỏi
 PEND = {}   # "chat:mid" của tin bot hỏi -> {id, f, u}
 STATE_KF = {}  # kho_flow: đợt hàng về -> id các dòng 03
@@ -1036,8 +1036,26 @@ def act(cq, tid, a):
         return
     elif a == "doi_dvvc":
         upd(r, {"Trạng thái": "Chờ hàng hoàn về"} if st == "Chờ đòi ĐVVC" else {}, "đã đòi ĐVVC", who)
-    elif a == "nhap":
-        upd(r, {"Nhập kho QLBH": f"✓ {who} {now()}"}, "nhập kho QLBH", who)
+    elif a in ("nhap", "nhap_ep"):
+        if r.get("Nhập kho QLBH"):
+            return answer(cq, "Đã nhập rồi")
+        ghi = ""
+        if a == "nhap":   # đọc Nhanh (chỉ đọc): có phiếu nhập trả của đơn gốc chưa — chống bấm nút mà quên nhập
+            try:
+                import nhap_hoan as NHH
+                ok, ly = NHH.Nhanh().da_nhap(r.get("MVĐ hoàn về"), r.get("Mã đơn")) if NHH.NH.con_moi(240) else (None, "dữ liệu Nhanh cũ")
+            except Exception as e:
+                ok, ly = None, f"lỗi đọc Nhanh: {e}"
+            if ok is False:
+                answer(cq, "Nhanh chưa có phiếu nhập trả", True)
+                return tsend(chat, f"⚠️ {esc(r['ID'])}: <b>Nhanh chưa có phiếu nhập trả</b> ({esc(ly)}).\n"
+                                   "Nhập trả trên Nhanh (knowledge/SOP_NHANH_HOAN_DOI.md) — bot tự tick sau lần đồng bộ kế tiếp. "
+                                   "Đã nhập cách khác → bấm nút dưới.",
+                             [[{"text": "✅ Đã kiểm tay — Nhanh có rồi", "callback_data": f"tk:a:{r['ID']}:nhap_ep"}]], reply_to=mid)
+            ghi = f" · Nhanh: {ly}" if ok else f" · chưa kiểm được Nhanh ({ly})"
+        else:
+            ghi = " · kiểm tay (Nhanh chưa có phiếu lúc bấm)"
+        upd(r, {"Nhập kho QLBH": f"✓ {who} {now()}{ghi}"}, "nhập kho QLBH" + ghi, who)
         return finish(r, who)
     elif a in ("doi_xong", "doi_ep"):
         if st != "Chờ kho đổi trong đơn":

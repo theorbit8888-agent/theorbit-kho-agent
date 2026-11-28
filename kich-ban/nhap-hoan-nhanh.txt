@@ -1,0 +1,61 @@
+# NHẬP HOÀN KHO TRÊN NHANH (video chủ shop 27/11): bot đối chiếu, tự tick bảng 09, nhắc kiện chưa nhập
+nhanh-don
+la kho
+# kho nhận 2 kiện hoàn: SPXVN2001 nguyên vẹn, SPXVN2002 bị tráo (giữ khiếu nại → không nhắc nhập)
+nhanh-hoan SPXVN2001 74
+nhanh-hoan SPXVN2002 74
+kho: /hoan SPXVN2001
+bam 1
+kho: /hoan SPXVN2002
+bam 3
+# vừa nhận, Nhanh chưa nhập → chưa tick; chưa quá 1 ngày → chưa nhắc
+nhaphoan
+nhaphoan-nhac
+# 2 ngày sau vẫn chưa nhập hoàn trên Nhanh → nhắc nhóm Kho SPXVN2001 (kèm các bước). SPXVN2002 bị tráo: KHÔNG nhắc
+hoan-lui-ngay SPXVN2001 2
+hoan-lui-ngay SPXVN2002 2
+nhaphoan-nhac
+# kho nhập hoàn kho trên Nhanh (giả) → lần đồng bộ sau bot tự ghi ✅ bảng 09, hết nhắc
+nhanh-phieutra SPXVN2001
+nhaphoan
+nhaphoan-nhac
+xem SP 09 · HÀNG HOÀN NHẬN
+#
+# TICKET chờ nhập kho QLBH: đòi hàng hoàn TT1004 → kho nhận hàng → kho bấm "Đã nhập kho QLBH" khi Nhanh CHƯA có phiếu → bot chặn
+la cs
+doitra: /tk
+bam 4
+rieng: Mã đơn: TT1004
+bam 1
+bam 1
+bam 1
+la kho
+doitra: /xem TT1004
+bam 2
+bam 1
+doitra: /xem TT1004
+bam 1
+# kho nhập trả trên Nhanh (giả) → đồng bộ → bot tự tick + đóng ticket
+nhanh-phieutra TT1004
+nhaphoan
+doitra: /xem TT1004
+#
+# ĐỔI SAU GIAO: CS gõ MVĐ đơn đi → đơn đi trên Nhanh phải có SKU đổi sang (L → M)
+la cs
+doitra: /tk
+bam 1
+rieng: Mã đơn: TT1003\
+Tên KH: Test\
+SĐT: 0900000000\
+Địa chỉ: 1 Lê Lợi Q1\
+SKU: SO-A4-RIVET-L → M\
+Bù thêm: 0
+bam 1
+bam 5
+bam 1
+doitra: /xem TT1003
+bam 1
+# CS lỡ gõ MVĐ của đơn đi đang mang size L (sai) → bot báo nhóm Đổi trả 1 lần
+tra TT1001
+nhaphoan
+nhaphoan

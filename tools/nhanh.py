@@ -397,6 +397,11 @@ def sau_sync():
                         "chay", "--send"], timeout=300)
     except Exception as e:
         print("tru ton loi:", e)
+    try:   # Nhanh đã nhập hoàn / nhập trả → tick bảng 09 + đóng ticket QLBH + kiểm SKU đơn đi đổi (nhap_hoan.py)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "nhap_hoan.py"),
+                        "dongbo", "--send"], timeout=180)
+    except Exception as e:
+        print("nhap hoan loi:", e)
     try:   # hoả tốc đổi size chưa đổi quá 30 phút → nhắc nhóm Kho (cua_hang.py nhac_hoatoc)
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "cua_hang.py"),
                         "hoatoc", "--send"], timeout=120)
