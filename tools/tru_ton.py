@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """TRỪ TỒN NHANH cho hàng không bán được (chủ shop chốt 21/11/2026) — nằm trong luồng có sẵn, không lệnh mới.
 
+⚠️ 28/11/2026 chủ shop chốt: kiện tráo / lỗi KHÔNG nhập hoàn kho trên Nhanh (knowledge/SOP_NHANH_HOAN_DOI.md) → bình thường
+   Nhanh không cộng → bot không trừ. TH1 dưới đây chỉ còn để sửa khi kho LỠ nhập hoàn kiện xấu.
 TH1 · Hàng hoàn xấu (/hoan → kho chọn Không nguyên vẹn / Bị tráo / Thiếu, bảng 09):
   kho vẫn nhập trả trên Nhanh như thường (đóng đơn hoàn) → Nhanh cộng món đó lại vào tồn bán → sau mỗi lần đồng bộ
   bot thấy phiếu nhập trả của đơn đó → tạo PHIẾU XUẤT KHÁC trừ lại đúng món, đúng kho (Open API inventory/exportother).

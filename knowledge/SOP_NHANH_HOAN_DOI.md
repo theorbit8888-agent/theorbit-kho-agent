@@ -31,8 +31,8 @@ Dùng cho: khách trả hàng hoàn tiền, giao thất bại / đơn bom (hoàn
 7. Về bảng 09: đổi cột trạng thái dòng đó **MỚI → HOÀN THÀNH**.
    👉 Từ 28/11 bot tự ghi cột **"Nhập hoàn Nhanh" ✅** sau lần đồng bộ kế tiếp (không cần đổi tay nữa).
 
-**Kiện lỗi / bị tráo / thiếu** (cột 09 = Không nguyên vẹn / Bị tráo hàng, trạng thái **CHỜ XỬ LÝ**): xử lý khiếu nại theo ticket HHV.
-❓ Kiện tráo giữ lại khiếu nại thì **chưa** nhập hoàn (theo `tools/tru_ton.py`), bot không nhắc nhập các kiện này.
+**Kiện lỗi / bị tráo / thiếu** (cột 09 = Không nguyên vẹn / Bị tráo hàng, trạng thái **CHỜ XỬ LÝ**): **KHÔNG nhập hoàn kho trên Nhanh**
+(chủ shop chốt 28/11/2026) — xử lý khiếu nại theo ticket HHV. Bot không nhắc nhập các kiện này.
 
 **Tra thêm khi không chắc đơn** (video): Shopee Seller Center › *Đơn Trả hàng/Hoàn tiền hoặc Đơn hủy* › tìm theo tên người mua
 (VD đơn GYECHMT4 đã huỷ tự động, khiếu nại bị từ chối → ghi chú ở cột O bảng 09); TikTok Seller Center › *Quản lý đơn hàng*.
@@ -49,11 +49,13 @@ Shopee, đổi size XL→L, phí 25k"*). Khi áo **XL** khách gửi về tới 
 3. Ở đơn gốc bấm menu **≡** (góc phải) → tạo đơn trả → Nhanh mở trang **Thêm đơn hàng** (`order/manage/add?…&idReturn=<ID gốc>`):
    - Loại: **Khách trả lại hàng**, ô bên dưới tự điền **ID đơn gốc**.
    - Sản phẩm: món khách **trả về** (VD `JS-G3-ORLYMBIT-XL` × 1), **Chọn kho: KHO TỔNG - CN QUẬN 2**.
-   - Nhãn **Đơn về_Đổi**, hãng **TVC** ❓ (thấy trên đơn đã tạo), ghi chú CSKH nếu cần.
+   - Nhãn **Đơn về_Đổi**, ghi chú CSKH nếu cần.
+   - Phần **Vận chuyển**: **tick ô "Tự vận chuyển"** (chủ shop chốt 28/11/2026 — luôn tick, không chọn hãng).
    - Bấm **(F9) Lưu**.
 4. Về **Danh sách đơn hàng**: đơn mới có ghi chú *"<mã sàn> (Trả từ đơn: <ID gốc>)"*, nhãn **Đơn về_Đổi**.
    Tick đơn → **Thao tác › Đổi trạng thái** → **Thành công** (ngày giao thành công = hôm nay) → **Đổi trạng thái**.
-   → Nhanh tạo phiếu nhập trả "Trả từ đơn: <ID gốc>", tồn cộng lại món khách trả.
+   → **Phải chuyển Thành công thì Nhanh mới cộng tồn** món khách trả (chủ shop chốt 28/11/2026); Nhanh tạo phiếu nhập trả
+   "Trả từ đơn: <ID gốc>" — bot dựa vào phiếu này để đóng ticket. Lưu xong mà quên đổi trạng thái → tồn chưa cộng, ticket không đóng.
 5. Ticket đổi sau giao (DHS) ở nhóm Đổi trả: bước **"Chờ nhập kho QLBH"**.
    👉 Từ 28/11 bot tự tick + đóng ticket khi Nhanh có phiếu nhập trả của đơn gốc. Kho bấm "Đã nhập kho QLBH" mà Nhanh
    chưa có phiếu → bot nhắc nhập trước (có nút "Đã kiểm tay" nếu nhập cách khác).
@@ -71,8 +73,9 @@ chiếu: đơn đi trên Nhanh không có SKU đổi sang → báo nhóm Đổi 
 | Sau mỗi lần đồng bộ Nhanh | Ticket đổi sau giao có MVĐ đơn đi: đơn đi thiếu SKU đổi sang → báo 1 lần |
 | 10h / 14h / 18h | Kiện **nguyên vẹn** đã nhận quá `nhap_hoan_ngay` ngày (canh_bao.json, mặc định 1) mà Nhanh chưa nhập → nhắc nhóm Kho kèm các bước ở mục A |
 
-## ❓ Cần chủ shop xác nhận
-1. Kiện bị tráo / lỗi giữ khiếu nại: có nhập hoàn kho trên Nhanh không, và lúc nào?
-2. Đơn về đổi luôn chọn hãng TVC, hay theo hãng thực tế?
-3. Đơn về đổi phải chuyển **Thành công** thì Nhanh mới cộng tồn / tạo phiếu nhập trả (bot đang dựa vào phiếu này)?
-4. Cột trạng thái tay ở bảng 09 (MỚI / CHỜ XỬ LÝ / HOÀN THÀNH): giữ song song hay bỏ, dùng cột bot "Nhập hoàn Nhanh"?
+## Quy định chủ shop đã chốt (28/11/2026)
+1. Kiện **bị tráo / lỗi**: **không** nhập hoàn kho trên Nhanh.
+2. Đơn về đổi: luôn **tick "Tự vận chuyển"**, rồi **đổi trạng thái sang Thành công** thì Nhanh mới cộng tồn.
+
+## ❓ Còn cần chủ shop xác nhận
+- Cột trạng thái tay ở bảng 09 (MỚI / CHỜ XỬ LÝ / HOÀN THÀNH): giữ song song hay bỏ, dùng cột bot "Nhập hoàn Nhanh"?

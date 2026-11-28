@@ -804,6 +804,9 @@ def doi_soat_hoan_nhanh():
         if NH.goc_hoan(r.get("MVĐ")) in r_goc:      # tem hoàn đã tra ra đơn sàn, đơn đó Nhanh đã nhập trả (R)
             continue
         o = NH.don_theo_ma(r.get("MVĐ"))
+        xau = any(x in str(r.get("Tình trạng") or "").lower() for x in ("lỗi", "tráo", "thiếu", "không nguyên"))
+        if o and xau:
+            continue   # chủ shop 28/11: kiện tráo/lỗi KHÔNG nhập hoàn kho trên Nhanh (khiếu nại theo ticket HHV)
         if o and o["st"] not in NH.HOAN_ST and o["id"] not in nt and o["ma_san"] not in r_goc:
             nhanh_chua.append((r, o))
         elif not o:
