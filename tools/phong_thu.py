@@ -229,6 +229,12 @@ def main():
         sys.exit(f"Thiếu {', '.join(thieu)} trong {ENVF} → chạy: python3 tools/phong_thu.py --cai")
     ten = chan_bot_that(E["TELEGRAM_BOT_TOKEN"])
     TG, pre, on_job, chats = dung(E, "--reset" in sys.argv)
+    try:   # menu "/" từng nhóm thử như bot thật; /thu ở phòng thử = lệnh giả lập (thu tiền mặt không thử được ở đây)
+        import menu_lenh as ML
+        gl = [("thu", "PHÒNG THỬ: lệnh giả lập — gõ /thu xem danh sách")]
+        ML.dat_menu(E, TG.api, them={"CHAT_ID": gl, "TICKET_CHAT_ID": gl, "CH_CHAT_ID": gl})
+    except Exception as e:
+        print("menu lệnh lỗi:", e, flush=True)
     print(f"🧪 PHÒNG KHO GIẢ LẬP — bot thử @{ten}. Dữ liệu giả: {SAN}. Ctrl+C để tắt.", flush=True)
     TG.send(E["CHAT_ID"], "🧪 Phòng kho giả lập đã bật. Gõ /kho xem lệnh kho, /thu xem lệnh giả lập (Sheet/Nhanh đều GIẢ).")
     try:

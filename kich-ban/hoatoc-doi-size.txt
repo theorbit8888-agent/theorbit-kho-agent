@@ -1,0 +1,29 @@
+# HOẢ TỐC CẦN ĐỔI SIZE (26/11): thẻ khoá bước — đổi size xong mới book ship; thẻ tự sang nhóm Kho; chặn /giao; nhắc 30 phút
+nhanh-don
+la cs
+# CS gõ ở nhóm CS & Cửa hàng → thẻ (có nút) chuyển sang nhóm Kho
+ch: /hoatoc TT1002 đổi SO-A4-RIVET-L → M khách cần trước 18h
+la kho
+# nút book ship chưa có; /giao TT1002 bị giữ lại
+kho: /giao TT1002
+# quá 30 phút chưa đổi → bot nhắc nhóm Kho; chạy lại ngay → không nhắc trùng
+hoatoc-lui V1 45
+hoatoc-lui V1 45
+# kho bấm "Đã đổi size" mà Nhanh chưa sửa → bot không cho qua
+bam 1 @1
+# kho sửa đơn trên Nhanh (giả) → bấm lại → qua bước, hiện nút book ship
+nhanh-sp TT1002 SO-A4-RIVET-M
+bam 1 @1
+# thẻ đã sửa → bấm 🛵 Đã book ship
+bam 1
+# đã đổi → /giao TT1002 không còn bị giữ; không nhắc nữa
+kho: /giao TT1002
+hoatoc-lui V1 90
+#
+# KHÔNG áp dụng: hoả tốc thường (không đổi) → nút book ship như cũ, /giao không giữ
+ch: /hoatoc TT1004 khách cần trước 18h
+kho: /giao TT1004
+# KHÔNG áp dụng: đơn đã rời kho → không mở thẻ, báo mở /doi
+nhanh-st SPXVN2001 59
+ch: /hoatoc SPXVN2001 đổi SO-A4-RIVET-L → S
+xem CH · VIỆC

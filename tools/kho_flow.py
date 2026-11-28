@@ -804,6 +804,9 @@ def doi_soat_hoan_nhanh():
         if NH.goc_hoan(r.get("MVĐ")) in r_goc:      # tem hoàn đã tra ra đơn sàn, đơn đó Nhanh đã nhập trả (R)
             continue
         o = NH.don_theo_ma(r.get("MVĐ"))
+        xau = any(x in str(r.get("Tình trạng") or "").lower() for x in ("lỗi", "tráo", "thiếu", "không nguyên"))
+        if o and xau:
+            continue   # chủ shop 28/11: kiện tráo/lỗi KHÔNG nhập hoàn kho trên Nhanh (khiếu nại theo ticket HHV)
         if o and o["st"] not in NH.HOAN_ST and o["id"] not in nt and o["ma_san"] not in r_goc:
             nhanh_chua.append((r, o))
         elif not o:
@@ -2010,7 +2013,7 @@ def tonkho(m, arg):
     if not pn:
         return tsend(chat, t + "\n\nĐếm thật khác → <code>/kiemkho " + esc(ds[0]) + " số_đếm</code>", reply_to=mid)
     t += "\n\nĐếm ở kệ PN thấy khác thì bấm mã đó, trả lời số thật → bot ghi lại ngay."
-    b = [[{"text": f"✏️ {s} đếm thật khác", "callback_data": f"tk:x:{i}"}] for i, s in enumerate(ds)]
+    b = [[{"text": f"✏️ {s} đếm thật khác", "callback_data": f"tn:x:{i}"}] for i, s in enumerate(ds)]
     k = tsend(chat, t, b, reply_to=mid)
     if k:
         TK.STATE_KF[f"tk{k}"] = {"ds": ds, "nhanh": nh}
@@ -2071,7 +2074,7 @@ def tk_reply(m, p):
     d = f"{'+' if lech > 0 else ''}{lech}"
     tsend(chat, f"📝 <b>{esc(s)}</b> ở PN: thật <b>{thuc}</b> · Nhanh {n} → lệch <b>{d}</b>. Đã ghi sổ.\n"
           "👉 " + ql_tag() + " xử lý giúp. Đếm lại chắc chắn rồi thì bấm nút dưới.",
-          nut_dc(dot) + [[{"text": "↩️ Huỷ, ghi nhầm", "callback_data": f"tk:huy:{dot}"}]], reply_to=m["message_id"])
+          nut_dc(dot) + [[{"text": "↩️ Huỷ, ghi nhầm", "callback_data": f"tn:huy:{dot}"}]], reply_to=m["message_id"])
     for o in TK.duyet_ids():
         tsend(o, f"⚠️ <b>Tồn PN lệch</b> ({esc(who)}, /tonkho): {esc(s)} thật {thuc} · Nhanh {n} ({d})")
 
@@ -2085,7 +2088,7 @@ TK.EXT_CB["kp"] = kp_cb   # thẻ kiểm kho PN (NVBH, nhóm CS & Cửa hàng)
 TK.EXT_REPLY["kp_so"] = kp_reply
 TK.EXT_CMDS["/tonkho"] = tonkho
 TK.EXT_NHOM["/tonkho"] = ("CHAT_ID", "CH_CHAT_ID")
-TK.EXT_CB["tk"] = tk_cb
+TK.EXT_CB["tn"] = tk_cb   # KHÔNG dùng "tk": tiền tố đó là của MỌI nút ticket (ticket.py)
 TK.EXT_REPLY["tk_so"] = tk_reply
 TK.EXT_REPLY.update({"kf_ddat": on_reply, "kf_nhanh": on_reply, "kf_lechdi": on_reply})
 if not hasattr(TK, "STATE_KF"):

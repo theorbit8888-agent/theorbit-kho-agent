@@ -311,19 +311,68 @@ def nhanh_dong(ma):
 
 
 def the_viec(r):
-    L = [f"🧷 <b>{esc(r['ID'])}</b> · {esc(r.get('Loại'))} · đơn <code>{esc(r.get('Mã đơn'))}</code>"]
-    if r.get("Nội dung"):
-        L.append(f"📝 {esc(r.get('Nội dung'))}")
+    """Thẻ việc theo khung chung (khung.py): tiêu đề · mã đơn · vấn đề · việc cần làm · ai làm · hạn."""
+    import khung as KH
+    loai, st, nd = r.get("Loại") or "", r.get("Trạng thái") or "", str(r.get("Nội dung") or "")
+    ma, gui = r.get("Mã đơn"), f"{r.get('Người giao') or ''} {str(r.get('Lúc giao') or '')[11:16]}".strip()
+    xong = st in ("Xong", "Huỷ", "Hủy")
+    if loai in (HT_DOI, "Hoả tốc"):
+        cu, moi = sku_doi(nd)
+        ghi = re.sub(r"(?i)(?<!\w)(đổi|doi)(?!\w)\s*[A-Z0-9][A-Z0-9-]*-[A-Z0-9]+\s*(→|->|=>|>|sang)\s*[A-Z0-9-]+", "", nd).strip(" -—")
+        if st == "Chờ đổi size":
+            tieu, icon = "Hoả tốc – cần đổi size trước khi giao", "🔥"
+            vd = (f"Khách đổi {KH.doi(cu, moi)}" if moi else "Khách cần đổi size (xem ghi chú)") + (f" · {ghi}" if ghi else "")
+            viec, han = ["Sửa size trong đơn trên Nhanh", "Bấm ✅ Đã đổi size trong đơn", "Rồi mới book ship"], \
+                f"30 phút, tính từ {str(r.get('Lúc giao') or '')[11:16]}"
+        else:
+            tieu = "Hoả tốc – đã xong" if xong else ("Hoả tốc – chờ shipper lấy" if st == "Đã book ship" else "Hoả tốc – cần giao gấp")
+            icon = "✅" if xong else "🔥"
+            vd = (f"Đã đổi {KH.doi(cu, moi)} · " if loai == HT_DOI and moi else "") + (ghi or "Đơn cần đi hoả tốc")
+            viec = None if xong else (["Shipper lấy hàng xong bấm ✅ Shipper đã lấy"] if st == "Đã book ship"
+                                      else ["Book ship hoả tốc", "Bấm 🛵 Đã book ship", "Shipper lấy xong bấm ✅ Shipper đã lấy"])
+            han = None
+        ai = "Kho"
+    elif loai == "Note kho":
+        tieu, icon = ("Ghi chú đơn – kho đã làm" if xong else "Ghi chú đơn cho kho"), ("✅" if xong else "📝")
+        vd, viec, ai, han = nd or "(không ghi chú)", None if xong else ["Làm theo ghi chú TRƯỚC khi gói đơn",
+                                                                    "Bấm ✅ Kho đã làm (đơn đi rồi thì bấm 🚚)"], "Kho", None
+    else:   # /goi
+        tieu, icon = ("Store gói / book ship – xong" if xong else "Nhờ store gói / book ship"), ("✅" if xong else "📦")
+        vd, viec, ai, han = nd or "CS nhờ store xử lý đơn", None if xong else ["Gói đơn", "Book ship",
+                                                                            "Bấm nút đúng bước bên dưới"], "Store (NVBH)", None
+    them = []
     if r.get("Nhanh"):
-        L.append(r["Nhanh"])
-    L.append(f"➡️ <b>{esc(r.get('Trạng thái'))}</b> · giao: {esc(r.get('Người giao'))} {esc(str(r.get('Lúc giao'))[11:16])}"
-             + (f" · làm: {esc(r.get('Người làm'))} {esc(str(r.get('Lúc xong'))[11:16])}" if r.get("Người làm") else ""))
-    return "\n".join(L)
+        them.append(r["Nhanh"])
+    them.append(f"🕒 {esc(r['ID'])} · gửi: {esc(gui)}"
+                + (f" · làm: {esc(r.get('Người làm'))} {esc(str(r.get('Lúc xong'))[11:16])}" if r.get("Người làm") else "")
+                + f" · <i>{esc(st)}</i>")
+    return KH.the(tieu, ma, vd, viec, ai, han, icon=icon, them=them)
+
+
+HT_DOI = "Hoả tốc · đổi size"   # /hoatoc có chữ "đổi": khoá bước — đổi size xong mới book ship (giu_don.py chặn /giao)
+NUT_DOI = [("✅ Đã đổi size trong đơn", "doisize"), ("🚚 Đơn đã đi rồi", "dadi")]
+
+
+def la_doi(nd):
+    return re.search(r"(?<!\w)(đổi|doi)(?!\w)", nd or "", re.I) is not None
+
+
+def sku_doi(nd):
+    """'đổi SO-A4-RIVET-M → L' / 'doi SO-A4-RIVET-M sang SO-A4-RIVET-L' → (cũ, mới); không rõ → ('', '')."""
+    m = re.search(r"([A-Z0-9][A-Z0-9-]*-[A-Z0-9]+)\s*(?:→|->|=>|>|sang)\s*([A-Z0-9-]+)", nd or "", re.I)
+    if not m:
+        return "", ""
+    cu, moi = m.group(1).upper(), m.group(2).upper()
+    if "-" not in moi and len(moi) <= 4:
+        moi = cu.rsplit("-", 1)[0] + "-" + moi
+    return cu, moi
 
 
 def nut_viec(r, lenh):
     if r.get("Trạng thái") in ("Xong", "Huỷ"):
         return []
+    if r.get("Trạng thái") == "Chờ đổi size":
+        return [[{"text": t, "callback_data": f"ch:v:{r['ID']}:{a}"} for t, a in NUT_DOI]]
     return [[{"text": t, "callback_data": f"ch:v:{r['ID']}:{a}"} for t, a in LOAI_VIEC[lenh][1]]]
 
 
@@ -331,21 +380,40 @@ def giao_viec(m, arg, lenh):
     c, who = m["chat"]["id"], ten(m.get("from"))
     p = arg.split(maxsplit=1)
     if not p:
-        return tsend(c, f"Gõ <code>{lenh} &lt;mã đơn&gt; &lt;ghi chú&gt;</code>", reply_to=m["message_id"])
+        return tsend(c, f"Gõ <code>{lenh} &lt;mã đơn&gt; &lt;ghi chú&gt;</code>"
+                     + ("\nHoả tốc cần đổi size: <code>/hoatoc &lt;mã đơn&gt; đổi SO-A4-RIVET-M → L</code>" if lenh == "/hoatoc" else ""),
+                     reply_to=m["message_id"])
     ma, nd = p[0].lstrip("#"), (p[1] if len(p) > 1 else "").lstrip("- ")
+    doi = lenh == "/hoatoc" and la_doi(nd)
     dong, o = nhanh_dong(ma)
     canh = ""
-    if lenh == "/note" and o and o["st"] in (59, 60, 61, 71, 72, 74):
+    if lenh in ("/note", "/hoatoc") and o and o["st"] in (59, 60, 61, 71, 72, 74):
         canh = "\n⚠️ <b>Đơn đã rời kho</b> — không sửa trong đơn được nữa. Đổi size → mở /doi (đổi sau giao)."
+    if doi and canh:   # đơn đã rời kho: không mở thẻ khoá bước (sẽ treo + nhắc mãi) → CS mở /doi
+        import khung as KH
+        return tsend(c, KH.the("Không đổi size được – đơn đã rời kho", ma, "Đơn đã giao cho đơn vị vận chuyển",
+                               ["Báo khách đơn đã đi", "Khách vẫn muốn đổi → mở /doi (đổi sau giao)"], "CS", icon="🚚",
+                               them=[dong] if dong else None), reply_to=m["message_id"])
+    if doi and not sku_doi(nd)[1]:
+        canh += "\nℹ️ Ghi rõ <code>SKU cũ → size mới</code> để bot tự kiểm Nhanh khi kho bấm đã đổi."
     with TK._LOCK:
         n = 1 + max([int(re.sub(r"\D", "", str(r.get("ID", ""))) or 0) for r in rows(VIEC)] + [0])
-        r = {"ID": f"V{n}", "Loại": LOAI_VIEC[lenh][0], "Mã đơn": ma, "Nội dung": nd, "Người giao": who,
-             "Lúc giao": now().strftime("%Y-%m-%d %H:%M"), "Trạng thái": "Chờ làm", "Nhanh": re.sub(r"<[^>]+>", "", dong)}
+        r = {"ID": f"V{n}", "Loại": HT_DOI if doi else LOAI_VIEC[lenh][0], "Mã đơn": ma, "Nội dung": nd, "Người giao": who,
+             "Lúc giao": now().strftime("%Y-%m-%d %H:%M"), "Trạng thái": "Chờ đổi size" if doi else "Chờ làm",
+             "Nhanh": re.sub(r"<[^>]+>", "", dong)}
         r["_id"] = add(VIEC, r)
     r["Nhanh"] = dong
-    mid = tsend(c, the_viec(r) + canh, nut_viec(r, lenh), reply_to=m["message_id"])
+    kho = str(TK.E.get("CHAT_ID") or "")
+    if doi and kho and str(c) != kho:   # việc đổi size là của KHO → thẻ có nút nằm ở nhóm Kho
+        mid = tsend(kho, the_viec(r) + canh + f"\n(gửi từ nhóm khác: {esc(who)})", nut_viec(r, lenh))
+        tsend(c, f"🔥 Đã chuyển {esc(r['ID'])} (hoả tốc đổi size) sang <b>nhóm Kho</b>. Kho đổi xong mới book ship."
+              + canh, reply_to=m["message_id"])
+        c_the = kho
+    else:
+        mid = tsend(c, the_viec(r) + canh, nut_viec(r, lenh), reply_to=m["message_id"])
+        c_the = c
     if mid:
-        TG.kho("update", table=TG.sname(VIEC), id=r["_id"], fields={"Thẻ tin": TG.mk(c, mid) + "|" + lenh})
+        TG.kho("update", table=TG.sname(VIEC), id=r["_id"], fields={"Thẻ tin": TG.mk(c_the, mid) + "|" + lenh})
 
 
 def on_cb(cq, p):
@@ -370,6 +438,43 @@ def on_cb(cq, p):
         if not r:
             return answer(cq, "Không thấy việc", True)
         lenh = str(r.get("Thẻ tin", "")).split("|")[-1] or "/goi"
+        c, mid = cq["message"]["chat"]["id"], cq["message"]["message_id"]
+        if r.get("Trạng thái") == "Chờ đổi size" and a in ("book", "xong", "goi"):   # nút cũ còn trên thẻ
+            return answer(cq, "Chưa đổi size xong — bấm ✅ Đã đổi size trước", True)
+        if a in ("doisize", "doiep"):
+            if r.get("Trạng thái") != "Chờ đổi size":
+                return answer(cq, "Đã đổi rồi")
+            cu, moi = sku_doi(r.get("Nội dung"))
+            if a == "doisize" and moi:
+                import giu_don as GD
+                kq, ly = GD.kiem_doi(r.get("Mã đơn"), cu, moi)
+                if kq == "sai":
+                    answer(cq, "Nhanh chưa đúng size", True)
+                    import khung as KH
+                    return tsend(c, KH.the("Nhanh chưa đổi size – chưa qua bước", r.get("Mã đơn"),
+                                           f"Cần {KH.doi(cu, moi)} nhưng {ly}",
+                                           ["Sửa size trong đơn trên Nhanh", "Bấm lại ✅ Đã đổi size (bot kiểm sau lần đồng bộ kế tiếp)",
+                                            "Đã sửa ở chỗ khác (VD trên sàn) → bấm nút dưới"], "Kho", icon="⚠️"),
+                                 [[{"text": "✅ Đã kiểm tay — đúng rồi", "callback_data": f"ch:v:{r['ID']}:doiep"}]], reply_to=mid)
+                ghi = f" · Nhanh: {ly}" if kq == "ok" else f" · chưa kiểm được Nhanh ({ly})"
+            else:
+                ghi = " · kiểm tay" if a == "doiep" else ""
+            dong_moi, _ = nhanh_dong(r.get("Mã đơn"))
+            f = {"Trạng thái": "Chờ làm", "Nội dung": (str(r.get("Nội dung") or "") + f" — ✅ đã đổi size ({who} "
+                 f"{now():%H:%M}){ghi}").strip()}
+            if dong_moi:
+                f["Nhanh"] = re.sub(r"<[^>]+>", "", dong_moi)
+            TG.kho("update", table=TG.sname(VIEC), id=r["_id"], fields=f)
+            r.update(f)
+            if dong_moi:
+                r["Nhanh"] = dong_moi
+            answer(cq, "Đã đổi size")
+            if a == "doiep":   # bấm từ tin cảnh báo → sửa thẻ gốc
+                m = re.match(r"tg:(-?\d+):(\d+)", str(r.get("Thẻ tin") or ""))
+                if m:
+                    tedit(m.group(1), int(m.group(2)), the_viec(r), nut_viec(r, lenh))
+                return tedit(c, mid, esc(cq["message"].get("text", "")) + f"\n✅ {esc(who)} xác nhận đã đổi")
+            return tedit(c, mid, the_viec(r), nut_viec(r, lenh))
         st = {"goi": "Đã gói", "book": "Đã book ship", "xong": "Xong", "dadi": "Xong"}[a]
         f = {"Trạng thái": st, "Người làm": who, "Lúc xong": now().strftime("%Y-%m-%d %H:%M")}
         if a == "dadi":
@@ -377,10 +482,10 @@ def on_cb(cq, p):
         TG.kho("update", table=TG.sname(VIEC), id=r["_id"], fields=f)
         r.update(f)
         answer(cq, st)
-        tedit(cq["message"]["chat"]["id"], cq["message"]["message_id"], the_viec(r), nut_viec(r, lenh))
+        tedit(c, mid, the_viec(r), nut_viec(r, lenh))
         if a == "dadi":
-            tsend(cq["message"]["chat"]["id"], f"🚚 {esc(r['ID'])}: đơn {esc(r.get('Mã đơn'))} đã đi — CS báo khách, "
-                                               "cần đổi thì mở /doi.", reply_to=cq["message"]["message_id"])
+            tsend(c, f"🚚 {esc(r['ID'])}: đơn {esc(r.get('Mã đơn'))} đã đi — CS báo khách, "
+                     "cần đổi thì mở /doi.", reply_to=mid)
     if p[1] == "cs":
         return cs_cb(cq, p)
 
@@ -671,9 +776,63 @@ def cs_cb(cq, p):
 
 # ======================= lịch =======================
 
+HT_NHAC_F = os.path.join(TK.ROOT, "logs", "hoatoc_nhac.json")
+
+
+def nhac_hoatoc(send=False):
+    """Hoả tốc đổi size nằm "Chờ đổi size" quá N phút (canh_bao.json hoa_toc_doi_size_phut, mặc định 30)
+    → nhắc nhóm Kho, mỗi thẻ tối đa 1 lần / N phút. Gọi từ hen + sau mỗi lần đồng bộ Nhanh."""
+    import json
+    try:
+        phut = int(json.load(open(os.path.join(TK.ROOT, "knowledge", "canh_bao.json"), encoding="utf-8"))
+                   .get("hoa_toc_doi_size_phut") or 30)
+    except Exception:
+        phut = 30
+    try:
+        da = json.load(open(HT_NHAC_F))
+    except Exception:
+        da = {}
+    ds = []
+    for r in rows(VIEC):
+        if r.get("Trạng thái") != "Chờ đổi size":
+            continue
+        try:
+            tuoi = (now() - datetime.strptime(str(r.get("Lúc giao"))[:16], "%Y-%m-%d %H:%M")).total_seconds() / 60
+        except ValueError:
+            continue
+        lan = da.get(r["ID"])
+        if tuoi >= phut and (not lan or (now() - datetime.strptime(lan, "%Y-%m-%d %H:%M")).total_seconds() >= phut * 60):
+            ds.append((r, int(tuoi)))
+    if not ds:
+        return []
+    import khung as KH
+    the_ = []
+    for r, p_ in ds:
+        cu, moi = sku_doi(r.get("Nội dung"))
+        the_.append(KH.the("Hoả tốc chưa đổi size – trễ", r.get("Mã đơn"),
+                           (f"Khách đổi {KH.doi(cu, moi)}" if moi else str(r.get("Nội dung") or "")[:80])
+                           + f" · đã chờ {KH.gio_txt(p_)} (CS {r.get('Người giao') or ''})",
+                           ["Sửa size trong đơn trên Nhanh", "Bấm ✅ Đã đổi size trên thẻ " + str(r["ID"]), "Chưa đổi thì KHÔNG book ship"],
+                           "Kho", f"quá {phut} phút", icon="⏰"))
+    t = "\n\n".join(the_)
+    kho = str(TK.E.get("CHAT_ID") or "") or chat()
+    if send:
+        for r, _ in ds:
+            da[r["ID"]] = now().strftime("%Y-%m-%d %H:%M")
+        try:
+            json.dump(da, open(HT_NHAC_F, "w"))
+        except Exception as e:
+            print("hoatoc: không ghi được sổ nhắc", e)
+    return [(kho, t)]
+
+
 def hen(send=False):
     h, mi = now().hour, now().minute
     out = []
+    try:
+        out.extend(nhac_hoatoc(send))
+    except Exception as e:
+        print("hen: nhắc hoả tốc lỗi", e)
     if h in (10, 14, 18):
         treo = [r for r in rows(VIEC) if r.get("Trạng thái") not in ("Xong", "Huỷ")
                 and (now() - datetime.strptime(str(r.get("Lúc giao"))[:16], "%Y-%m-%d %H:%M")).total_seconds() > 7200]
@@ -681,6 +840,15 @@ def hen(send=False):
             out.append((chat() or TK.E.get("CHAT_ID"), "⏰ <b>Việc treo quá 2 giờ</b>\n" + "\n".join(
                 f"• {esc(r['ID'])} {esc(r.get('Loại'))} đơn {esc(r.get('Mã đơn'))} — {esc(r.get('Trạng thái'))} "
                 f"({esc(r.get('Người giao'))})" for r in treo[:25])))
+        try:   # ticket đổi trả kẹt quá hạn ở bất kỳ bước nào → nhóm phải làm (canh_bao.json ticket_han_gio)
+            out.extend(TK.nhac_tre(im=True).items())
+        except Exception as e:
+            print("hen: nhắc ticket quá hạn lỗi", e)
+        try:   # hàng hoàn kho đã nhận mà Nhanh chưa nhập hoàn (nhap_hoan.py)
+            import nhap_hoan as NHH
+            out.extend(NHH.nhac())
+        except Exception as e:
+            print("hen: nhắc nhập hoàn lỗi", e)
     if h == 10:   # checklist đầu ca kho chưa tick đủ → nhắc nhóm kho + chủ shop
         try:
             import kho_flow as KF
@@ -791,6 +959,11 @@ if __name__ == "__main__":
         print(_j.dumps(out, ensure_ascii=False))
     elif a[0] == "hen":
         hen("--send" in a)
+    elif a[0] == "hoatoc":   # sau mỗi lần đồng bộ Nhanh (nhanh.py sau_sync): hoả tốc đổi size chưa đổi quá N phút
+        for c_, t_ in nhac_hoatoc("--send" in a):
+            print(re.sub(r"<[^>]+>", "", t_))
+            if "--send" in a and c_:
+                tsend(c_, t_)
     elif a[0] == "soCK":
         gui_so_ck("--send" in a)
     else:

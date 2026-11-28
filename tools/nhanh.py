@@ -397,6 +397,21 @@ def sau_sync():
                         "chay", "--send"], timeout=300)
     except Exception as e:
         print("tru ton loi:", e)
+    try:   # Nhanh đã nhập hoàn / nhập trả → tick bảng 09 + đóng ticket QLBH + kiểm SKU đơn đi đổi (nhap_hoan.py)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "nhap_hoan.py"),
+                        "dongbo", "--send"], timeout=180)
+    except Exception as e:
+        print("nhap hoan loi:", e)
+    try:   # báo in đơn tự động theo giờ (xuat_kho.py bao_in; máy chỉ có lượt 30 phút vẫn báo được)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "xuat_kho.py"),
+                        "baoin", "--send"], timeout=120)
+    except Exception as e:
+        print("bao in loi:", e)
+    try:   # hoả tốc đổi size chưa đổi quá 30 phút → nhắc nhóm Kho (cua_hang.py nhac_hoatoc)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "cua_hang.py"),
+                        "hoatoc", "--send"], timeout=120)
+    except Exception as e:
+        print("nhac hoa toc loi:", e)
     try:   # sổ huỷ sau in / yêu cầu hoàn lên Sheet (chủ shop 14/11)
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "so_sheet.py"),
                         "dongbo"], timeout=300)
@@ -432,6 +447,12 @@ if __name__ == "__main__":
                                 "canhhuy", "--send"], timeout=120)
             except Exception as e:
                 print("canh huy loi:", e)
+            for f_, lenh_ in (("xuat_kho.py", "baoin"), ("cua_hang.py", "hoatoc")):   # báo in đơn theo giờ + hoả tốc chưa đổi size
+                try:
+                    subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), f_),
+                                    lenh_, "--send"], timeout=120)
+                except Exception as e:
+                    print(lenh_, "loi:", e)
             try:   # phiếu chuyển kho Q2→PN: thẻ nhận hàng + đối chiếu Nhanh đã nhận
                 subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "chuyen_kho.py"),
                                 "quet", "--send"], timeout=120)

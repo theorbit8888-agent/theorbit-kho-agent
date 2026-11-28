@@ -35,6 +35,17 @@ Bot Telegram @theorbit_kho_bot lo 3 nhóm: **Kho hàng về & restock**, **Đổ
 
 (Phần đọc Nhanh.vn / sàn cần Chrome đã đăng nhập của shop → sân thử bỏ qua, chủ shop thử trên máy thật.)
 
+## Menu lệnh "/" trong Telegram (tự động, bàn giao không cần làm tay)
+Gõ "/" trong nhóm → Telegram hiện đúng lệnh của nhóm đó kèm mô tả. Bot **tự khai báo mỗi lần khởi động**
+(`tools/menu_lenh.py`, gọi từ `listener.py` và `phong_thu.py`), không cần vào @BotFather `/setcommands`.
+- Lệnh nào hiện ở nhóm nào: bot tự đọc từ code (lệnh các module đăng ký + nhóm được dùng).
+- ID nhóm: đọc từ env (`CHAT_ID`, `TICKET_CHAT_ID`, `CH_CHAT_ID`).
+- **Bàn giao / đổi bot / đổi nhóm / máy mới:** sửa env (token, ID nhóm) → khởi động lại bot → menu tự cập nhật.
+  Nhóm bị Telegram nâng lên supergroup thì ID nhóm đổi (dạng `-100…`) → sửa env như trên.
+- **Thêm lệnh mới:** thêm 1 dòng mô tả vào `MO_TA` trong `tools/menu_lenh.py` (lệnh dùng ở mọi nhóm thì thêm cả `NHA`).
+  Quên → `python3 tools/menu_lenh.py kiem` báo lỗi → `cap_nhat.sh thu` không cho lên bot thật.
+- Xem trước menu: `python3 tools/menu_lenh.py xem`.
+
 ## Luật bắt buộc
 - **Không bao giờ** chạy `listener.py` bằng token bot thật (dùng sân thử là đủ): 2 máy cùng nghe 1 bot sẽ giành tin của nhau, bot thật chạy sai.
 - Không commit/gửi file env, token, cookie, log (`logs/` đã bị .gitignore).

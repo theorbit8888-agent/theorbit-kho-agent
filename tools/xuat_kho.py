@@ -259,14 +259,9 @@ def cu_qua():
     return "" if NH.con_moi(90) else f"\n⚠️ Dữ liệu Nhanh cũ (cập nhật {esc(NH.meta().get('dong_bo', '?'))}) — số có thể trễ."
 
 
-def indon(m, arg):
-    if not can_nhanh(m):
-        return
-    s = chup()
-    luu(s)
-    hn = KF.today()
-    ds = [o for o in NH.orders().values() if la_cho(o)]
-    L = [f"🖨 <b>IN ĐƠN</b> {datetime.now():%H:%M %d/%m} — đơn chờ gửi trên Nhanh:"]
+def noi_dung_in(ds):
+    """Các dòng báo in đơn cho danh sách đơn chờ gửi `ds` (dùng chung cho /indon và báo tự động theo giờ)."""
+    L = []
     moc = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M")
     for k in ("tiktok", "shopee", "ngoai"):
         xs = [o for o in ds if o["kenh"] == k]
@@ -277,11 +272,86 @@ def indon(m, arg):
         L.append(f"• <b>{SAN_KENH[k]}</b>: {len(xs)} đơn → in <b>{len(tem)}</b> tem"
                  + (f" · 🏷 {len(xs) - len(tem)} chưa có MVĐ (chưa sắp xếp vận chuyển trên sàn)" if len(tem) < len(xs) else "")
                  + (f"\n   ⏰ <b>{len(cu)} đơn tạo quá 24h</b> — giao trước kẻo quá hạn: {ds_ma(cu, 10)}" if cu else ""))
+    giu = []
+    try:   # đơn đang có ticket đổi trước giao / /note / hoả tốc đổi size chưa xong → xử lý TRƯỚC khi gói
+        import giu_don as GD
+        cho = GD.dang_cho()
+        giu = [(o, GD.ly_do_giu(o, cho)) for o in ds]
+        giu = [(o, ly) for o, ly in giu if ly]
+    except Exception as e:
+        print("indon: không đọc được đơn chờ đổi", e, flush=True)
+    if giu:
+        import khung as KH
+        L.append("\n" + KH.the(f"{len(giu)} đơn phải xử lý TRƯỚC khi gói", None, "Các đơn dưới có yêu cầu đổi size / ghi chú chưa xong",
+                               ["Làm đúng yêu cầu (sửa đơn trên Nhanh nếu đổi size)", "Bấm nút trên thẻ ticket / thẻ việc", "Rồi mới gói + in tem"],
+                               "Kho", icon="⚠️",
+                               them=[f"• <code>{esc(ma(o))}</code> — " + "; ".join(esc(x) for x in ly) for o, ly in giu[:20]]))
+    return L
+
+
+def indon(m, arg):
+    if not can_nhanh(m):
+        return
+    s = chup()
+    luu(s)
+    hn = KF.today()
+    ds = [o for o in NH.orders().values() if la_cho(o)]
+    L = [f"🖨 <b>IN ĐƠN</b> {datetime.now():%H:%M %d/%m} — đơn chờ gửi trên Nhanh:"] + noi_dung_in(ds)
     if len(L) == 1:
         L.append("Không có đơn chờ gửi 🎉")
     L.append(f"\nTổng cần gửi hôm nay: <b>{sum(1 for o in NH.orders().values() if o['id'] in s[hn]['ds'] and not la_huy(o))}</b>. "
              "Giao shipper xong: <b>chụp tem</b> (nhiều tem 1 ảnh được), chú thích <code>/giao</code>.")
     tsend(m["chat"]["id"], "\n".join(L) + cu_qua(), reply_to=m["message_id"])
+
+
+BAO_IN_F = os.path.join(KF.ROOT, "logs", "bao_in.json")
+
+
+def bao_in(send=False, luc=None):
+    """BÁO IN ĐƠN TỰ ĐỘNG theo giờ (canh_bao.json bao_in_don_gio, mặc định 8h, 11h, 14h; chủ shop 28/11/2026).
+    Mỗi khung giờ báo 1 lần trong 30 phút đầu; chỉ gửi khi có ĐƠN MỚI chờ gửi so với lần báo trước (không thì im).
+    Gọi từ lượt đồng bộ Nhanh 3 phút / 30 phút. Trả text đã gửi (hoặc "")."""
+    import khung as KH
+    now = luc or datetime.now()
+    try:
+        gio = json.load(open(os.path.join(KF.ROOT, "knowledge", "canh_bao.json"), encoding="utf-8")).get("bao_in_don_gio") or [8, 11, 14]
+    except Exception:
+        gio = [8, 11, 14]
+    if now.hour not in gio or now.minute >= 30 or not NH.meta():
+        return ""
+    try:
+        st = json.load(open(BAO_IN_F))
+    except Exception:
+        st = {}
+    hn, khung_ = now.strftime("%Y-%m-%d"), f"{now:%Y-%m-%d} {now.hour:02d}"
+    if st.get("ngay") != hn:
+        st = {"ngay": hn, "da_bao": [], "khung": []}
+    if khung_ in st["khung"]:
+        return ""
+    ds = [o for o in NH.orders().values() if la_cho(o)]
+    moi = [o for o in ds if o["id"] not in set(st["da_bao"])]
+    st["khung"].append(khung_)
+    t = ""
+    if moi:
+        tem = sum(1 for o in ds if o.get("mvd"))
+        t = KH.the(f"In đơn – {now:%H:%M}", None,
+                   f"Có {len(moi)} đơn mới từ lần báo trước · đang chờ gửi {len(ds)} đơn, cần in {tem} tem",
+                   ["In tem trên sàn (TikTok / Shopee Seller Center) theo số dưới",
+                    "Đơn trong mục ⚠️ phải xử lý xong rồi mới gói", "Giao shipper xong: chụp tem, chú thích /giao"],
+                   "Kho", icon="🖨", them=[""] + noi_dung_in(ds))
+        st["da_bao"] = sorted(set(st["da_bao"]) | {o["id"] for o in ds})
+        print(re.sub(r"<[^>]+>", "", t))
+        if send and KF.kchat():
+            tsend(KF.kchat(), t)
+    else:
+        print(f"bao_in {khung_}: không có đơn mới")
+    if send:
+        try:
+            os.makedirs(os.path.dirname(BAO_IN_F), exist_ok=True)
+            json.dump(st, open(BAO_IN_F, "w"))
+        except Exception as e:
+            print("bao_in: không ghi được sổ", e)
+    return t
 
 
 def giao(m, arg):
@@ -298,10 +368,12 @@ def giao(m, arg):
     s = chup() if NH.meta() else st()
     d = ngay_st(s, KF.today())
     moi, trung, huy, la, cu, ngoai = [], [], [], [], [], []
+    quet = []   # (mã quét, đơn Nhanh | None) — để kiểm đơn đang chờ đổi
     for x in mas:
         if x.lower() in d["giao"]:
             trung.append(x); continue
         o = tim(x, d)
+        quet.append((x, o))
         d["giao"][x.lower()] = {"ma": x, "id": o["id"] if o else "", "kenh": o["kenh"] if o else "", "who": who,
                                 "luc": datetime.now().strftime("%H:%M")}
         if not o:
@@ -314,6 +386,23 @@ def giao(m, arg):
             moi.append(o)
             if not la_cho(o) and _d(o.get("gui_dvvc") or o.get("cap_nhat")) < KF.today():
                 cu.append(o)
+    giu = []
+    try:   # đơn còn ticket đổi trước giao / /note / hoả tốc đổi size chưa xong → GIỮ LẠI, không ghi đã giao
+        import giu_don as GD
+        cho = GD.dang_cho()
+        for x, o in quet:
+            if o and la_huy(o):
+                continue
+            ly = GD.ly_do_giu(o, cho) if o else GD.ly_do_giu_ma(x, cho)
+            if ly:
+                giu.append((x, ly))
+                d["giao"].pop(x.lower(), None)
+                moi[:] = [y for y in moi if y is not o]
+                la[:] = [y for y in la if y != x]
+                ngoai[:] = [y for y in ngoai if y != x]
+                cu[:] = [y for y in cu if y is not o]
+    except Exception as e:
+        print("giao: không đọc được đơn chờ đổi", e, flush=True)
     luu(s)
     so = [x for x in la if ma_that(x)] + ngoai   # mã gõ sai/ngắn (VD XYZ123) không ghi sổ, chỉ báo ❓
     if so:
@@ -327,6 +416,13 @@ def giao(m, arg):
         L.append("🚨 <b>ĐƠN ĐÃ HUỶ — GIỮ LẠI, KHÔNG GIAO:</b> " + ", ".join(
             f"<code>{esc(x)}</code> ({esc(o['st_ten'])})" for x, o in huy))
         btn = [[{"text": f"↩️ Đã rút lại {x[-8:]}", "callback_data": f"xk:rut:{x[:40]}"}] for x, _ in huy[:5]]
+    if giu:
+        import khung as KH
+        for x, ly in giu:
+            L.append("\n" + KH.the("Giữ lại kiện này – không giao", x, "; ".join(ly) + " – chưa làm xong",
+                                   ["Rút kiện ra, KHÔNG đưa shipper", "Làm xong yêu cầu, bấm nút trên thẻ",
+                                    "In lại tem nếu cần, rồi quét /giao lại"], "Kho", icon="⛔",
+                                   them=["<i>(kiện này chưa được ghi là đã giao)</i>"]))
     if trung:
         L.append("♻️ Quét rồi, bỏ qua: " + ", ".join(f"<code>{esc(x)}</code>" for x in trung))
     if la:
@@ -916,6 +1012,8 @@ if __name__ == "__main__":
         canlay_cli(a)
     elif a and a[0] == "canhhuy":   # sau mỗi lần đồng bộ Nhanh (nhanh.py sync gọi): báo đơn vừa huỷ sau in
         print(re.sub(r"<[^>]+>", "", canh_huy("--send" in a)) or "không có đơn huỷ sau in mới")
+    elif a and a[0] == "baoin":   # báo in đơn tự động theo giờ (gọi mỗi lượt đồng bộ Nhanh; tự lọc khung giờ)
+        bao_in("--send" in a)
     elif a and a[0] == "doisoat":   # python3 tools/xuat_kho.py doisoat [YYYY-MM-DD]
         print(re.sub(r"<[^>]+>", "", bao_cao(a[1] if len(a) > 1 else None, ghi=False)[0]))
     else:

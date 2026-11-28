@@ -1,0 +1,31 @@
+# TICKET QUÁ HẠN TỪNG BƯỚC (26/11): mọi bước có hạn giờ (knowledge/canh_bao.json ticket_han_gio)
+# → 10h/14h/18h bot nhắc đúng nhóm phải làm; bản 9h có thêm mục "Quá hạn ở bước khác"
+nhanh-don
+la cs
+doitra: /tk
+bam 2
+rieng: Mã đơn: TT1003\
+SKU: SO-A4-RIVET-L → M
+bam 1
+bam 1
+bam 1
+# vừa tạo → chưa quá hạn 2 giờ → không nhắc
+tk-tre
+# kẹt 3 giờ ở "Chờ kho đổi trong đơn" → nhắc NHÓM KHO
+tk-lui DHT20001 3
+tk-tre
+# ticket đòi hàng hoàn kẹt "Chờ đòi ĐVVC" 30 giờ → nhắc NHÓM ĐỔI TRẢ (CS làm)
+doitra: /tk
+bam 4
+rieng: Mã đơn: TT1004
+bam 1
+bam 1
+bam 1
+tk-lui DHH20002 30
+tk-tre
+# KHÔNG áp dụng: ticket đã đóng thì thôi nhắc
+nhanh-sp TT1003 SO-A4-RIVET-M
+la kho
+doitra: /xem DHT20001
+bam 1
+tk-tre

@@ -1,0 +1,14 @@
+# BÁO IN ĐƠN TỰ ĐỘNG THEO GIỜ (chủ shop 28/11): 8h / 11h / 14h, chỉ khi có đơn mới so với lần báo trước
+nhanh-don
+# 7h50: chưa tới giờ → im
+baoin 07:50
+# 8h05: có 9 đơn chờ gửi → báo nhóm Kho (số tem theo sàn, đơn quá 24h)
+baoin 08:05
+# 8h20: cùng khung 8h, đã báo → im
+baoin 08:20
+# 11h05: không có đơn mới → im (KHÔNG áp dụng)
+baoin 11:05
+# có đơn mới lên Nhanh → 14h05 báo lại, kèm mục ⚠️ đơn phải xử lý trước khi gói
+nhanh-them TT2001 TT2001 tiktok SO-A4-RIVET-M
+kho: /note TT2001 đổi sang túi giấy
+baoin 14:05

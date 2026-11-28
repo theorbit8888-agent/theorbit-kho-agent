@@ -45,6 +45,9 @@ thu_nhanh() {   # $1 = ref (nhánh/commit) → chạy mọi kịch bản trên b
   # phòng thử phải import được (thiếu file như tru_ton.py 26/11 là lỗi ngay ở đây)
   ( cd "$wt" && HOME="$home" python3 -c "import sys; sys.path.insert(0,'tools'); import phong_thu" ) >"$TMP/import.out" 2>&1 \
     && echo "  ✅ phòng thử import được" || { loi=$((loi+1)); echo "  ❌ phòng thử không import được:"; tail -3 "$TMP/import.out"; }
+  # menu "/" Telegram: lệnh mới phải có mô tả + nhóm (tools/menu_lenh.py), không thì không hiện khi gõ "/"
+  ( cd "$wt" && HOME="$home" SAN_THU_DIR="$TMP/du-lieu-$$-menu" python3 tools/menu_lenh.py kiem ) >"$TMP/menu.out" 2>&1 \
+    && echo "  ✅ menu lệnh đủ mô tả" || { loi=$((loi+1)); echo "  ❌ menu lệnh thiếu:"; grep "❌" "$TMP/menu.out" | head -5; }
   git worktree remove --force "$wt"; rm -rf "$home" "$TMP"/du-lieu-$$-*
   [ $loi -eq 0 ] && { do_ "ĐẠT: $n kịch bản, 0 lỗi"; return 0; } || { do_ "LỖI: $loi chỗ hỏng / $n kịch bản → KHÔNG lên bot thật"; return 1; }
 }
