@@ -468,29 +468,38 @@ def mask(x):
     return ("…" + x[-4:]) if len(x) > 5 else x
 
 
+VIEC_BUOC = {   # bước không có trong canh_bao.json ticket_han_gio
+    "Chờ hàng hoàn về": ("Chờ hàng khách gửi trả về kho; kho nhận được thì bấm 📥 Kho nhận hàng hoàn", "Kho"),
+    "Chờ duyệt": ("Chủ shop xem rồi bấm Duyệt / Từ chối", "Chủ shop"),
+}
+
+
 def card(r, rieng=False):
-    loai = r.get("Loại", "")
-    L = [f"🎫 <b>{esc(r['ID'])}</b> · {esc(loai)}",
-         (f"Kênh: {esc(r.get('Kênh'))} · " if r.get("Kênh") else "")
-         + (f"Đơn: <code>{esc(r.get('Mã đơn'))}</code>" if r.get("Mã đơn") else "Đơn: (chưa rõ)")]
-    if rieng and r.get("STK hoàn"):
-        L.append(f"🏦 Hoàn vào: {esc(r.get('STK hoàn'))}")
-    if rieng and (r.get("Tên KH") or r.get("SĐT KH") or r.get("Địa chỉ KH")):
-        L.append(f"KH: {esc(r.get('Tên KH'))} · {esc(r.get('SĐT KH'))}\n{esc(r.get('Địa chỉ KH'))}")
-    if r.get("SKU khách đang cầm") or r.get("SKU đổi sang"):
-        s = esc(r.get("SKU khách đang cầm"))
-        if r.get("SKU đổi sang"):
-            s += f" → <b>{esc(r.get('SKU đổi sang'))}</b>"
-            if r.get("Tồn SKU đổi"):
-                s += f" ({esc(r.get('Tồn SKU đổi'))})"
-        L.append("SKU: " + s)
+    """Thẻ ticket theo khung chung (khung.py): mã đơn · vấn đề · việc cần làm · ai làm · hạn, rồi chi tiết."""
+    import khung as KH
+    loai, st = r.get("Loại", ""), r.get("Trạng thái", "")
+    dong = st in DONG
+    van_de = []
     if r.get("Lý do"):
-        ld = f"Lý do: {esc(r.get('Lý do'))}"
-        if r.get("Lỗi do") and r.get("Lỗi do") not in ("Chưa rõ",):
-            ld += f" → lỗi <b>{esc(r.get('Lỗi do'))}</b>"
-        L.append(ld)
+        van_de.append(str(r.get("Lý do")) + (f" (lỗi {r.get('Lỗi do')})" if r.get("Lỗi do") not in (None, "", "Chưa rõ") else ""))
+    if r.get("SKU đổi sang"):
+        van_de.append(f"khách đổi {KH.doi(r.get('SKU khách đang cầm'), r.get('SKU đổi sang'))}"
+                      + (f" (tồn: {r.get('Tồn SKU đổi')})" if r.get("Tồn SKU đổi") else ""))
+    elif r.get("SKU khách đang cầm"):
+        van_de.append(f"món: {KH.ten_sku(r.get('SKU khách đang cầm'))}")
+    vd = " · ".join(van_de) or loai
+    cfg = han_buoc().get(st) or {}
+    viec, ai = (cfg.get("viec"), {"kho": "Kho", "doitra": "CS"}.get(cfg.get("nhom"), "CS")) if cfg else VIEC_BUOC.get(st, (None, None))
+    if st == "Chờ duyệt":
+        ai = "Chủ shop"
+    viec_l = None if dong else ([viec, "Xong bấm nút bên dưới"] if viec else ["Bấm nút bên dưới khi xong bước này"])
+    them = []
+    if rieng and r.get("STK hoàn"):
+        them.append(f"🏦 Hoàn vào: {esc(r.get('STK hoàn'))}")
+    if rieng and (r.get("Tên KH") or r.get("SĐT KH") or r.get("Địa chỉ KH")):
+        them.append(f"👥 KH: {esc(r.get('Tên KH'))} · {esc(r.get('SĐT KH'))} · {esc(r.get('Địa chỉ KH'))}")
     if r.get("Chi tiết"):
-        L.append(f"📝 {esc(r.get('Chi tiết'))[:300]}")
+        them.append(f"📝 {esc(r.get('Chi tiết'))[:300]}")
     tienL = []
     if tien(r.get("Phí ship shop trả")) or tien(r.get("Phí ship KH trả")):
         tienL.append(f"ship shop {vnd(r.get('Phí ship shop trả'))} / KH {vnd(r.get('Phí ship KH trả'))}")
@@ -499,22 +508,25 @@ def card(r, rieng=False):
     if tien(r.get("Tiền hoàn KH")):
         tienL.append(f"hoàn KH {vnd(r.get('Tiền hoàn KH'))}")
     if tienL:
-        L.append("💰 " + " · ".join(tienL))
+        them.append("💰 " + " · ".join(tienL))
     if r.get("MVĐ đi") or r.get("MVĐ hoàn về"):
         f = (lambda x: esc(x)) if rieng else mask
-        L.append(f"🚚 MVĐ đi {f(r.get('MVĐ đi')) or '-'} · hoàn về {f(r.get('MVĐ hoàn về')) or '-'}"
-                 + (f" (gửi {esc(r.get('Ngày gửi đi'))})" if r.get("Ngày gửi đi") else ""))
+        them.append(f"🚚 Mã vận đơn đi {f(r.get('MVĐ đi')) or '-'} · hoàn về {f(r.get('MVĐ hoàn về')) or '-'}"
+                    + (f" (gửi {esc(r.get('Ngày gửi đi'))})" if r.get("Ngày gửi đi") else ""))
     if r.get("Tình trạng hàng hoàn"):
-        L.append(f"📥 Hàng hoàn: {esc(r.get('Tình trạng hàng hoàn'))} ({esc(r.get('Ngày hàng hoàn về'))}, "
-                 f"{esc(r.get('Người nhận hoàn'))})")
+        them.append(f"📥 Hàng hoàn: {esc(r.get('Tình trạng hàng hoàn'))} ({esc(r.get('Ngày hàng hoàn về'))}, "
+                    f"{esc(r.get('Người nhận hoàn'))})")
     if r.get("Chi tiết lệch"):
-        L.append(f"📝 Lệch: {esc(r.get('Chi tiết lệch'))}" + (" · 📸 có ảnh" if r.get("Ảnh hàng hoàn") else ""))
+        them.append(f"📝 Lệch: {esc(r.get('Chi tiết lệch'))}" + (" · 📸 có ảnh" if r.get("Ảnh hàng hoàn") else ""))
     if r.get("Phạt kho"):
-        L.append(f"⚖️ Phạt kho: {esc(r.get('Phạt kho'))}")
+        them.append(f"⚖️ Phạt kho: {esc(r.get('Phạt kho'))}")
     if r.get("Duyệt"):
-        L.append(f"🧾 {esc(r.get('Duyệt'))}")
-    L.append(f"➡️ <b>{esc(r.get('Trạng thái'))}</b> · tạo bởi {esc(r.get('Người tạo'))}")
-    return "\n".join(L)
+        them.append(f"🧾 {esc(r.get('Duyệt'))}")
+    them.append(f"🕒 {esc(r['ID'])} · bước hiện tại: <i>{esc(st)}</i> · tạo bởi {esc(r.get('Người tạo'))}")
+    ma = (r.get("Mã đơn") or "(chưa rõ)") + (f" ({r.get('Kênh')})" if r.get("Kênh") else "")
+    return KH.the(f"{loai} – {'đã xong' if dong else 'đang xử lý'}", ma, vd[:1].upper() + vd[1:], viec_l,
+                  None if dong else ai, None if dong or not cfg else f"{cfg.get('gio')} giờ cho bước này",
+                  icon="✅" if dong else "🎫", them=them)
 
 
 def btns(r):
@@ -1048,9 +1060,11 @@ def act(cq, tid, a):
                 ok, ly = None, f"lỗi đọc Nhanh: {e}"
             if ok is False:
                 answer(cq, "Nhanh chưa có phiếu nhập trả", True)
-                return tsend(chat, f"⚠️ {esc(r['ID'])}: <b>Nhanh chưa có phiếu nhập trả</b> ({esc(ly)}).\n"
-                                   "Nhập trả trên Nhanh (knowledge/SOP_NHANH_HOAN_DOI.md) — bot tự tick sau lần đồng bộ kế tiếp. "
-                                   "Đã nhập cách khác → bấm nút dưới.",
+                import khung as KH
+                return tsend(chat, KH.the("Nhanh chưa nhập trả – ticket chưa đóng", f"{r.get('Mã đơn')} (ticket {r['ID']})",
+                                          f"Hàng đã về kho nhưng Nhanh chưa có phiếu nhập trả ({ly})",
+                                          ["Nhập trả trên Nhanh theo SOP (knowledge/SOP_NHANH_HOAN_DOI.md)",
+                                           "Bot tự đóng ticket sau lần đồng bộ kế tiếp", "Đã nhập cách khác → bấm nút dưới"], "Kho", icon="⚠️"),
                              [[{"text": "✅ Đã kiểm tay — Nhanh có rồi", "callback_data": f"tk:a:{r['ID']}:nhap_ep"}]], reply_to=mid)
             ghi = f" · Nhanh: {ly}" if ok else f" · chưa kiểm được Nhanh ({ly})"
         else:
@@ -1069,8 +1083,11 @@ def act(cq, tid, a):
                 kq, ly = "chua_ro", f"lỗi đọc Nhanh: {e}"
             if kq == "sai":
                 answer(cq, "Nhanh chưa đúng size", True)
-                return tsend(chat, f"⚠️ {esc(r['ID'])}: <b>{esc(ly)}</b>.\nSửa đơn trên Nhanh rồi bấm lại ✅ Kho đã đổi trong đơn "
-                                   "(bot kiểm lại sau lần đồng bộ kế tiếp). Đã sửa ở chỗ khác (VD trên sàn) → bấm nút dưới.",
+                import khung as KH
+                return tsend(chat, KH.the("Nhanh chưa đổi size – ticket chưa đóng", f"{r.get('Mã đơn')} (ticket {r['ID']})",
+                                          f"Cần {KH.doi(r.get('SKU khách đang cầm'), r.get('SKU đổi sang'))} nhưng {ly}",
+                                          ["Sửa size trong đơn trên Nhanh", "Bấm lại ✅ Kho đã đổi trong đơn (bot kiểm sau lần đồng bộ kế tiếp)",
+                                           "Đã sửa ở chỗ khác (VD trên sàn) → bấm nút dưới"], "Kho", icon="⚠️"),
                              [[{"text": "✅ Đã kiểm tay — đúng rồi", "callback_data": f"tk:a:{r['ID']}:doi_ep"}]], reply_to=mid)
             ghi += f" · Nhanh: {ly}" if kq == "ok" else f" · chưa kiểm được Nhanh ({ly})"
         else:
@@ -1839,13 +1856,48 @@ def qua_han(rs=None):
     return sorted(out, key=lambda x: -x[1])
 
 
+# trạng thái ticket → câu dễ hiểu (dùng trong tin nhắc, khung.py)
+MO_TA_BUOC = {
+    "Chờ kho đổi trong đơn": "khách đổi size trước khi giao, kho chưa đổi trong đơn",
+    "Chờ nhập kho QLBH": "hàng hoàn đã về kho, chưa nhập trên Nhanh",
+    "Chờ khiếu nại sàn": "kiện hoàn lỗi/tráo, chưa khiếu nại trên sàn",
+    "Chờ sàn trả lời": "đã khiếu nại sàn, chưa có kết quả",
+    "Chờ gọi KH": "chưa gọi được khách",
+    "Chờ tạo đơn đi": "khách đã đồng ý, chưa tạo đơn đi",
+    "Chờ hoàn tiền": "chưa hoàn tiền cho khách",
+    "Chờ đòi ĐVVC": "chưa đòi đơn vị vận chuyển trả hàng",
+    "Chờ khiếu nại ĐVVC": "chưa khiếu nại đơn vị vận chuyển",
+    "Chờ ĐVVC trả lời": "đã khiếu nại đơn vị vận chuyển, chưa có kết quả",
+    "Chờ CS gắn đơn": "kiện hoàn về chưa biết của đơn nào",
+    "Chờ duyệt": "chờ chủ shop duyệt",
+    "Chờ hàng hoàn về": "hàng khách gửi trả chưa về kho",
+}
+
+
 def _gio_txt(g):
-    return f"{int(g)} giờ" if g < 48 else f"{int(g // 24)} ngày"
+    import khung as KH
+    return KH.gio_txt(g * 60)
 
 
 def dong_tre(r, g, cfg):
-    return (f"• <b>{esc(r['ID'])}</b> {esc(r.get('Loại'))} · đơn <code>{esc(r.get('Mã đơn') or '?')}</code> — "
-            f"<b>{esc(r.get('Trạng thái'))}</b> {_gio_txt(g)} (hạn {cfg.get('gio')}h) → {esc(cfg.get('viec') or '')}")
+    """1 dòng ngắn (dùng trong bản 9h)."""
+    st = r.get("Trạng thái")
+    return (f"• <b>{esc(r.get('Mã đơn') or '?')}</b> ({esc(r['ID'])}): {esc(MO_TA_BUOC.get(st, st))} — "
+            f"đã chờ <b>{_gio_txt(g)}</b> (hạn {cfg.get('gio')} giờ) → {esc(cfg.get('viec') or '')}")
+
+
+def the_tre(r, g, cfg):
+    """Khung đầy đủ cho 1 ticket trễ (tin nhắc 10/14/18h)."""
+    import khung as KH
+    st = r.get("Trạng thái")
+    vd = MO_TA_BUOC.get(st, st)
+    if r.get("SKU đổi sang") and st in ("Chờ kho đổi trong đơn", "Chờ tạo đơn đi"):
+        vd += f" ({KH.doi(r.get('SKU khách đang cầm'), r.get('SKU đổi sang'))})"
+    return KH.the(f"Ticket trễ hạn – {'kho' if cfg.get('nhom') == 'kho' else 'CS'} cần làm",
+                  f"{r.get('Mã đơn') or '?'} (ticket {r['ID']} · {r.get('Loại')})",
+                  f"{vd[:1].upper()}{vd[1:]} — đã chờ {_gio_txt(g)} (hạn {cfg.get('gio')} giờ)",
+                  [cfg.get("viec") or "Xử lý bước đang chờ", "Xong bấm nút trên thẻ ticket (gõ /xem mã-đơn để mở thẻ)"],
+                  "Kho" if cfg.get("nhom") == "kho" else "CS", icon="⏰")
 
 
 def nhac_tre(send=False, im=False):
@@ -1853,12 +1905,11 @@ def nhac_tre(send=False, im=False):
     nhom = {"kho": str(E.get("CHAT_ID") or ""), "doitra": tchat()}
     gom = {}
     for r, g, cfg in qua_han():
-        gom.setdefault(cfg.get("nhom") or "doitra", []).append(dong_tre(r, g, cfg))
+        gom.setdefault(cfg.get("nhom") or "doitra", []).append(the_tre(r, g, cfg))
     out = {}
     for k, ds in gom.items():
         c = nhom.get(k) or tchat()
-        t = (f"⏳ <b>Ticket quá hạn — {'KHO làm' if k == 'kho' else 'CS làm'}</b> ({len(ds)})\n" + "\n".join(ds[:25])
-             + ("\n…" if len(ds) > 25 else "") + "\nXong bước nào bấm nút trên thẻ ticket (hoặc /xem mã).")
+        t = "\n\n".join(ds[:15]) + (f"\n\n… còn {len(ds) - 15} ticket nữa (gõ /dangdo)" if len(ds) > 15 else "")
         out[c] = (out.get(c, "") + "\n\n" + t).strip()
     for c, t in out.items():
         if not im:

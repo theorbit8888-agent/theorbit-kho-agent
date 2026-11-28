@@ -59,13 +59,18 @@ def dang_cho():
 
     for r in TK.all_rows():
         if r.get("Trạng thái") == DHT_CHO and r.get("Mã đơn"):
-            sku = str(r.get("SKU khách đang cầm") or "")
-            if r.get("SKU đổi sang"):
-                sku += f" → {r.get('SKU đổi sang')}"
-            them(r["Mã đơn"], f"{r.get('ID')} đổi trước giao {sku}".strip())
+            import khung as KH
+            them(r["Mã đơn"], f"Khách đổi {KH.doi(r.get('SKU khách đang cầm'), r.get('SKU đổi sang'))} (ticket {r.get('ID')})")
     for r in _viec_rows():
         if viec_giu(r) and r.get("Mã đơn"):
-            them(r["Mã đơn"], f"{r.get('ID')} {r.get('Loại')}: {str(r.get('Nội dung') or '')[:60]}".strip())
+            nd = str(r.get("Nội dung") or "")[:70]
+            if r.get("Trạng thái") == "Chờ đổi size":
+                import khung as KH
+                import cua_hang as CH
+                cu, moi = CH.sku_doi(nd)
+                them(r["Mã đơn"], (f"Hoả tốc, khách đổi {KH.doi(cu, moi)}" if moi else f"Hoả tốc cần đổi: {nd}") + f" (thẻ {r.get('ID')})")
+            else:
+                them(r["Mã đơn"], f"Ghi chú cho kho: {nd} (thẻ {r.get('ID')})")
     return out
 
 

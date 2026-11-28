@@ -135,9 +135,11 @@ def dong_bo(send=False):
         if send:
             da[r["ID"]] = "ok" if moi in co else "sai"
         if moi not in co:
-            t = (f"⚠️ <b>{esc(r['ID'])}</b> đổi sau giao: đơn đi <code>{esc(r.get('MVĐ đi'))}</code> trên Nhanh là "
-                 f"<b>{esc(', '.join(sorted(co)) or '(trống)')}</b>, không có <b>{esc(moi)}</b> (SKU đổi sang).\n"
-                 "→ CS kiểm lại đơn đi trên Nhanh trước khi shipper lấy.")
+            import khung as KH
+            t = KH.the("Đơn đi đổi hàng sai món", f"{r.get('Mã đơn')} (ticket {r['ID']} · đơn đi {r.get('MVĐ đi')})",
+                       f"Khách đổi sang {KH.ten_sku(moi)} nhưng đơn đi trên Nhanh là "
+                       + (", ".join(KH.ten_sku(x) for x in sorted(co)) or "(trống)"),
+                       ["Mở đơn đi trên Nhanh, sửa đúng món đổi sang", "Kiểm trước khi shipper lấy hàng"], "CS", icon="⚠️")
             out.append(re.sub(r"<[^>]+>", "", t))
             if send and TK.tchat():
                 TK.tsend(TK.tchat(), t)
@@ -163,12 +165,22 @@ def nhac(send=False):
             continue
         ok, ly = N.da_nhap(r.get("MVĐ"), r.get("Đơn Nhanh"))
         if ok is False:
-            ds.append(f"• <code>{esc(r.get('MVĐ'))}</code> nhận {esc(d[8:10])}/{esc(d[5:7])} — "
-                      f"{esc(str(r.get('Sản phẩm') or '')[:60])} · {esc(ly)}")
+            import khung as KH
+            sp = "; ".join(KH.ten_sku(m) + (f" x{n}" if n else "") for m, n in
+                           re.findall(r"([A-Z0-9][A-Z0-9-]+-[A-Z0-9]+)\)?\s*x(\d+)", str(r.get("Sản phẩm") or ""))) \
+                or str(r.get("Sản phẩm") or "")[:60]
+            ds.append(f"• <b>{esc(r.get('MVĐ'))}</b> · nhận ngày {esc(d[8:10])}/{esc(d[5:7])} · {esc(sp)}")
     if not ds:
         return []
-    t = (f"📥 <b>Hàng hoàn kho đã nhận, Nhanh CHƯA nhập hoàn</b> (quá {ngay} ngày · {len(ds)} kiện) → tồn Nhanh đang thiếu:\n"
-         + "\n".join(ds[:25]) + ("\n…" if len(ds) > 25 else "") + f"\n\n🧭 {BUOC}\nNhập xong bot tự ghi ✅ ở bảng 09 (sau lần đồng bộ kế tiếp).")
+    import khung as KH
+    t = KH.the("Hàng hoàn chưa nhập trên Nhanh", None,
+               f"{len(ds)} kiện nguyên vẹn đã về kho quá {ngay} ngày, Nhanh chưa nhập hoàn → tồn Nhanh đang thiếu",
+               ["Nhanh › Kênh bán › Sàn TMĐT › Trả hàng hoàn tiền › tab Shopee/TikTok › Nhập hoàn kho",
+                "Chọn biên bản bàn giao (Kho tổng Q2, loại \"Nhận HVC hoàn về\")",
+                "Quét tem (giao thất bại: chọn \"Mã vận đơn gốc\") → kiểm số lượng → Xác nhận",
+                "Bot tự ghi ✅ ở bảng 09 sau lần đồng bộ kế tiếp"],
+               "Kho", icon="📥", them=["", "<b>Các kiện:</b>"] + ds[:25] + (["…"] if len(ds) > 25 else [])
+               + ["<i>Đơn đổi web/ngoài sàn: xem knowledge/SOP_NHANH_HOAN_DOI.md mục B</i>"])
     return [(str(TK.E.get("CHAT_ID") or ""), t)]
 
 

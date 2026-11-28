@@ -311,14 +311,42 @@ def nhanh_dong(ma):
 
 
 def the_viec(r):
-    L = [f"🧷 <b>{esc(r['ID'])}</b> · {esc(r.get('Loại'))} · đơn <code>{esc(r.get('Mã đơn'))}</code>"]
-    if r.get("Nội dung"):
-        L.append(f"📝 {esc(r.get('Nội dung'))}")
+    """Thẻ việc theo khung chung (khung.py): tiêu đề · mã đơn · vấn đề · việc cần làm · ai làm · hạn."""
+    import khung as KH
+    loai, st, nd = r.get("Loại") or "", r.get("Trạng thái") or "", str(r.get("Nội dung") or "")
+    ma, gui = r.get("Mã đơn"), f"{r.get('Người giao') or ''} {str(r.get('Lúc giao') or '')[11:16]}".strip()
+    xong = st in ("Xong", "Huỷ", "Hủy")
+    if loai in (HT_DOI, "Hoả tốc"):
+        cu, moi = sku_doi(nd)
+        ghi = re.sub(r"(?i)(?<!\w)(đổi|doi)(?!\w)\s*[A-Z0-9][A-Z0-9-]*-[A-Z0-9]+\s*(→|->|=>|>|sang)\s*[A-Z0-9-]+", "", nd).strip(" -—")
+        if st == "Chờ đổi size":
+            tieu, icon = "Hoả tốc – cần đổi size trước khi giao", "🔥"
+            vd = (f"Khách đổi {KH.doi(cu, moi)}" if moi else "Khách cần đổi size (xem ghi chú)") + (f" · {ghi}" if ghi else "")
+            viec, han = ["Sửa size trong đơn trên Nhanh", "Bấm ✅ Đã đổi size trong đơn", "Rồi mới book ship"], \
+                f"30 phút, tính từ {str(r.get('Lúc giao') or '')[11:16]}"
+        else:
+            tieu = "Hoả tốc – đã xong" if xong else ("Hoả tốc – chờ shipper lấy" if st == "Đã book ship" else "Hoả tốc – cần giao gấp")
+            icon = "✅" if xong else "🔥"
+            vd = (f"Đã đổi {KH.doi(cu, moi)} · " if loai == HT_DOI and moi else "") + (ghi or "Đơn cần đi hoả tốc")
+            viec = None if xong else (["Shipper lấy hàng xong bấm ✅ Shipper đã lấy"] if st == "Đã book ship"
+                                      else ["Book ship hoả tốc", "Bấm 🛵 Đã book ship", "Shipper lấy xong bấm ✅ Shipper đã lấy"])
+            han = None
+        ai = "Kho"
+    elif loai == "Note kho":
+        tieu, icon = ("Ghi chú đơn – kho đã làm" if xong else "Ghi chú đơn cho kho"), ("✅" if xong else "📝")
+        vd, viec, ai, han = nd or "(không ghi chú)", None if xong else ["Làm theo ghi chú TRƯỚC khi gói đơn",
+                                                                    "Bấm ✅ Kho đã làm (đơn đi rồi thì bấm 🚚)"], "Kho", None
+    else:   # /goi
+        tieu, icon = ("Store gói / book ship – xong" if xong else "Nhờ store gói / book ship"), ("✅" if xong else "📦")
+        vd, viec, ai, han = nd or "CS nhờ store xử lý đơn", None if xong else ["Gói đơn", "Book ship",
+                                                                            "Bấm nút đúng bước bên dưới"], "Store (NVBH)", None
+    them = []
     if r.get("Nhanh"):
-        L.append(r["Nhanh"])
-    L.append(f"➡️ <b>{esc(r.get('Trạng thái'))}</b> · giao: {esc(r.get('Người giao'))} {esc(str(r.get('Lúc giao'))[11:16])}"
-             + (f" · làm: {esc(r.get('Người làm'))} {esc(str(r.get('Lúc xong'))[11:16])}" if r.get("Người làm") else ""))
-    return "\n".join(L)
+        them.append(r["Nhanh"])
+    them.append(f"🕒 {esc(r['ID'])} · gửi: {esc(gui)}"
+                + (f" · làm: {esc(r.get('Người làm'))} {esc(str(r.get('Lúc xong'))[11:16])}" if r.get("Người làm") else "")
+                + f" · <i>{esc(st)}</i>")
+    return KH.the(tieu, ma, vd, viec, ai, han, icon=icon, them=them)
 
 
 HT_DOI = "Hoả tốc · đổi size"   # /hoatoc có chữ "đổi": khoá bước — đổi size xong mới book ship (giu_don.py chặn /giao)
@@ -362,8 +390,10 @@ def giao_viec(m, arg, lenh):
     if lenh in ("/note", "/hoatoc") and o and o["st"] in (59, 60, 61, 71, 72, 74):
         canh = "\n⚠️ <b>Đơn đã rời kho</b> — không sửa trong đơn được nữa. Đổi size → mở /doi (đổi sau giao)."
     if doi and canh:   # đơn đã rời kho: không mở thẻ khoá bước (sẽ treo + nhắc mãi) → CS mở /doi
-        return tsend(c, f"🚚 Đơn <code>{esc(ma)}</code> đã rời kho — không đổi size hoả tốc được nữa.\n" + dong
-                     + "\nKhách vẫn cần đổi → mở <b>/doi</b> (đổi sau giao).", reply_to=m["message_id"])
+        import khung as KH
+        return tsend(c, KH.the("Không đổi size được – đơn đã rời kho", ma, "Đơn đã giao cho đơn vị vận chuyển",
+                               ["Báo khách đơn đã đi", "Khách vẫn muốn đổi → mở /doi (đổi sau giao)"], "CS", icon="🚚",
+                               them=[dong] if dong else None), reply_to=m["message_id"])
     if doi and not sku_doi(nd)[1]:
         canh += "\nℹ️ Ghi rõ <code>SKU cũ → size mới</code> để bot tự kiểm Nhanh khi kho bấm đã đổi."
     with TK._LOCK:
@@ -375,12 +405,12 @@ def giao_viec(m, arg, lenh):
     r["Nhanh"] = dong
     kho = str(TK.E.get("CHAT_ID") or "")
     if doi and kho and str(c) != kho:   # việc đổi size là của KHO → thẻ có nút nằm ở nhóm Kho
-        mid = tsend(kho, "🔥 " + the_viec(r) + canh + f"\n(gửi từ nhóm khác: {esc(who)})", nut_viec(r, lenh))
+        mid = tsend(kho, the_viec(r) + canh + f"\n(gửi từ nhóm khác: {esc(who)})", nut_viec(r, lenh))
         tsend(c, f"🔥 Đã chuyển {esc(r['ID'])} (hoả tốc đổi size) sang <b>nhóm Kho</b>. Kho đổi xong mới book ship."
               + canh, reply_to=m["message_id"])
         c_the = kho
     else:
-        mid = tsend(c, ("🔥 " if doi else "") + the_viec(r) + canh, nut_viec(r, lenh), reply_to=m["message_id"])
+        mid = tsend(c, the_viec(r) + canh, nut_viec(r, lenh), reply_to=m["message_id"])
         c_the = c
     if mid:
         TG.kho("update", table=TG.sname(VIEC), id=r["_id"], fields={"Thẻ tin": TG.mk(c_the, mid) + "|" + lenh})
@@ -420,8 +450,11 @@ def on_cb(cq, p):
                 kq, ly = GD.kiem_doi(r.get("Mã đơn"), cu, moi)
                 if kq == "sai":
                     answer(cq, "Nhanh chưa đúng size", True)
-                    return tsend(c, f"⚠️ {esc(r['ID'])}: <b>{esc(ly)}</b>.\nSửa đơn trên Nhanh rồi bấm lại ✅ Đã đổi size "
-                                    "(bot kiểm lại sau lần đồng bộ Nhanh kế tiếp). Đã sửa ở chỗ khác (VD trên sàn) → bấm nút dưới.",
+                    import khung as KH
+                    return tsend(c, KH.the("Nhanh chưa đổi size – chưa qua bước", r.get("Mã đơn"),
+                                           f"Cần {KH.doi(cu, moi)} nhưng {ly}",
+                                           ["Sửa size trong đơn trên Nhanh", "Bấm lại ✅ Đã đổi size (bot kiểm sau lần đồng bộ kế tiếp)",
+                                            "Đã sửa ở chỗ khác (VD trên sàn) → bấm nút dưới"], "Kho", icon="⚠️"),
                                  [[{"text": "✅ Đã kiểm tay — đúng rồi", "callback_data": f"ch:v:{r['ID']}:doiep"}]], reply_to=mid)
                 ghi = f" · Nhanh: {ly}" if kq == "ok" else f" · chưa kiểm được Nhanh ({ly})"
             else:
@@ -439,9 +472,9 @@ def on_cb(cq, p):
             if a == "doiep":   # bấm từ tin cảnh báo → sửa thẻ gốc
                 m = re.match(r"tg:(-?\d+):(\d+)", str(r.get("Thẻ tin") or ""))
                 if m:
-                    tedit(m.group(1), int(m.group(2)), "🔥 " + the_viec(r), nut_viec(r, lenh))
+                    tedit(m.group(1), int(m.group(2)), the_viec(r), nut_viec(r, lenh))
                 return tedit(c, mid, esc(cq["message"].get("text", "")) + f"\n✅ {esc(who)} xác nhận đã đổi")
-            return tedit(c, mid, "🔥 " + the_viec(r), nut_viec(r, lenh))
+            return tedit(c, mid, the_viec(r), nut_viec(r, lenh))
         st = {"goi": "Đã gói", "book": "Đã book ship", "xong": "Xong", "dadi": "Xong"}[a]
         f = {"Trạng thái": st, "Người làm": who, "Lúc xong": now().strftime("%Y-%m-%d %H:%M")}
         if a == "dadi":
@@ -449,7 +482,7 @@ def on_cb(cq, p):
         TG.kho("update", table=TG.sname(VIEC), id=r["_id"], fields=f)
         r.update(f)
         answer(cq, st)
-        tedit(c, mid, ("🔥 " if r.get("Loại") == HT_DOI else "") + the_viec(r), nut_viec(r, lenh))
+        tedit(c, mid, the_viec(r), nut_viec(r, lenh))
         if a == "dadi":
             tsend(c, f"🚚 {esc(r['ID'])}: đơn {esc(r.get('Mã đơn'))} đã đi — CS báo khách, "
                      "cần đổi thì mở /doi.", reply_to=mid)
@@ -772,9 +805,16 @@ def nhac_hoatoc(send=False):
             ds.append((r, int(tuoi)))
     if not ds:
         return []
-    t = (f"🔥 <b>Hoả tốc CHƯA ĐỔI SIZE</b> (quá {phut} phút) — đổi trên Nhanh rồi bấm ✅ trên thẻ, chưa đổi KHÔNG book ship:\n"
-         + "\n".join(f"• {esc(r['ID'])} đơn <code>{esc(r.get('Mã đơn'))}</code> — {esc(str(r.get('Nội dung') or '')[:70])} "
-                     f"({p_} phút, {esc(r.get('Người giao'))})" for r, p_ in ds))
+    import khung as KH
+    the_ = []
+    for r, p_ in ds:
+        cu, moi = sku_doi(r.get("Nội dung"))
+        the_.append(KH.the("Hoả tốc chưa đổi size – trễ", r.get("Mã đơn"),
+                           (f"Khách đổi {KH.doi(cu, moi)}" if moi else str(r.get("Nội dung") or "")[:80])
+                           + f" · đã chờ {KH.gio_txt(p_)} (CS {r.get('Người giao') or ''})",
+                           ["Sửa size trong đơn trên Nhanh", "Bấm ✅ Đã đổi size trên thẻ " + str(r["ID"]), "Chưa đổi thì KHÔNG book ship"],
+                           "Kho", f"quá {phut} phút", icon="⏰"))
+    t = "\n\n".join(the_)
     kho = str(TK.E.get("CHAT_ID") or "") or chat()
     if send:
         for r, _ in ds:

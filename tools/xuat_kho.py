@@ -288,8 +288,11 @@ def indon(m, arg):
     except Exception as e:
         print("indon: không đọc được đơn chờ đổi", e, flush=True)
     if giu:
-        L.append(f"\n⚠️ <b>{len(giu)} đơn có yêu cầu đổi / ghi chú — xử lý TRƯỚC khi gói</b> (sửa trên Nhanh rồi bấm nút trên thẻ):")
-        L.extend(f"• <code>{esc(ma(o))}</code> — " + "; ".join(esc(x) for x in ly) for o, ly in giu[:20])
+        import khung as KH
+        L.append("\n" + KH.the(f"{len(giu)} đơn phải xử lý TRƯỚC khi gói", None, "Các đơn dưới có yêu cầu đổi size / ghi chú chưa xong",
+                               ["Làm đúng yêu cầu (sửa đơn trên Nhanh nếu đổi size)", "Bấm nút trên thẻ ticket / thẻ việc", "Rồi mới gói + in tem"],
+                               "Kho", icon="⚠️",
+                               them=[f"• <code>{esc(ma(o))}</code> — " + "; ".join(esc(x) for x in ly) for o, ly in giu[:20]]))
     L.append(f"\nTổng cần gửi hôm nay: <b>{sum(1 for o in NH.orders().values() if o['id'] in s[hn]['ds'] and not la_huy(o))}</b>. "
              "Giao shipper xong: <b>chụp tem</b> (nhiều tem 1 ảnh được), chú thích <code>/giao</code>.")
     tsend(m["chat"]["id"], "\n".join(L) + cu_qua(), reply_to=m["message_id"])
@@ -358,9 +361,12 @@ def giao(m, arg):
             f"<code>{esc(x)}</code> ({esc(o['st_ten'])})" for x, o in huy))
         btn = [[{"text": f"↩️ Đã rút lại {x[-8:]}", "callback_data": f"xk:rut:{x[:40]}"}] for x, _ in huy[:5]]
     if giu:
-        L.append("⛔ <b>CHƯA ĐỔI XONG — GIỮ LẠI, KHÔNG GIAO</b> (chưa ghi là đã giao):\n" + "\n".join(
-            f"• <code>{esc(x)}</code> — " + "; ".join(esc(y) for y in ly) for x, ly in giu)
-            + "\nĐổi xong trên Nhanh → bấm nút trên thẻ → in lại tem nếu cần → /giao lại.")
+        import khung as KH
+        for x, ly in giu:
+            L.append("\n" + KH.the("Giữ lại kiện này – không giao", x, "; ".join(ly) + " – chưa làm xong",
+                                   ["Rút kiện ra, KHÔNG đưa shipper", "Làm xong yêu cầu, bấm nút trên thẻ",
+                                    "In lại tem nếu cần, rồi quét /giao lại"], "Kho", icon="⛔",
+                                   them=["<i>(kiện này chưa được ghi là đã giao)</i>"]))
     if trung:
         L.append("♻️ Quét rồi, bỏ qua: " + ", ".join(f"<code>{esc(x)}</code>" for x in trung))
     if la:
