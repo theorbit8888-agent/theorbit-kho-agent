@@ -43,6 +43,7 @@ HƯỚNG DẪN (mỗi dòng):
   dubao                   chạy nhắc đặt hàng buổi sáng (bot nhắn riêng chủ shop, có nút)
   nhanh-sp MVĐ SKU        giả kho sửa sản phẩm trong đơn trên Nhanh (đổi size trước khi giao)
   nhanh-phieutra MÃ       giả kho nhập hoàn kho / nhập trả trên Nhanh (phiếu nhập trả của đơn gốc)
+  baoin HH:MM             giả lượt đồng bộ lúc HH:MM: báo in đơn tự động (8h/11h/14h, chỉ khi có đơn mới)
   nhaphoan                như sau mỗi lần đồng bộ Nhanh: tick bảng 09, đóng ticket QLBH, kiểm SKU đơn đi đổi
   nhaphoan-nhac           như 10/14/18h: kiện nguyên vẹn đã nhận mà Nhanh chưa nhập hoàn
   hoan-lui-ngay MVĐ N     lùi ngày nhận của dòng 09 N ngày (thử nhắc nhập hoàn)
@@ -248,6 +249,7 @@ import hoan_san  # noqa: E402
 import tru_ton  # noqa: E402
 tru_ton.STATE_F = os.path.join(SAN, "tru_ton.json")
 cua_hang.HT_NHAC_F = os.path.join(SAN, "hoatoc_nhac.json")   # sổ "đã nhắc hoả tốc chưa đổi size"
+xuat_kho.BAO_IN_F = os.path.join(SAN, "bao_in.json")   # sổ báo in đơn theo giờ
 import nhap_hoan  # noqa: E402
 nhap_hoan.STATE_F = os.path.join(SAN, "nhap_hoan.json")
 tru_ton.BAT_F = os.path.join(SAN, "tru_ton_bat")
@@ -432,6 +434,11 @@ def dong(line):
                        "kho": "", "sp": [[x["ma"], x["sl"], ""] for x in o.get("sp") or []]}
         json.dump(nt, open(p, "w"))
         return print(f"   (Nhanh: phiếu nhập trả đơn {o['ma_san'] or o['id']})")
+    if cmd == "baoin":   # baoin HH:MM → giả lượt đồng bộ lúc HH:MM: báo in đơn theo giờ (8h/11h/14h, chỉ khi có đơn mới)
+        h, mi = (int(x) for x in (rest.strip() or time.strftime("%H:%M")).split(":"))
+        from datetime import datetime as _dt
+        xuat_kho.bao_in(send=True, luc=_dt.now().replace(hour=h, minute=mi))
+        return
     if cmd == "nhaphoan":    # như sau mỗi lần đồng bộ Nhanh: tick bảng 09, đóng ticket QLBH, kiểm SKU đơn đi đổi
         nhap_hoan.dong_bo(send=True)
         return

@@ -106,5 +106,10 @@
     }
   },
   "hoa_toc_doi_size_phut": 30,
-  "nhap_hoan_ngay": 1
+  "nhap_hoan_ngay": 1,
+  "bao_in_don_gio": [
+    8,
+    11,
+    14
+  ]
 }

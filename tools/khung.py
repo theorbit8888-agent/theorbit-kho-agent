@@ -71,7 +71,8 @@ def the(tieu_de, ma=None, van_de=None, viec=None, ai=None, han=None, icon="📌"
     if ma:
         L.append(f"🧾 <b>Mã đơn:</b> {esc(ma)}")
     if van_de:
-        L.append(f"❗ <b>Vấn đề:</b> {esc(van_de)}")
+        v = str(van_de)
+        L.append(f"❗ <b>Vấn đề:</b> {esc(v[:1].upper() + v[1:])}")
     if viec:
         if isinstance(viec, (list, tuple)) and len(viec) > 1:
             L.append("👉 <b>Việc cần làm:</b>")
